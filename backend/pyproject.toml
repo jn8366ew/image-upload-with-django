@@ -1,0 +1,100 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Image upload MVP API (Django + DRF)"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "boto3>=1.43.111",
+    "django>=5.2,<5.3",
+    "django-environ>=0.14.0",
+    "djangorestframework>=3.18.3",
+    "psycopg[binary]>=3.3.6",
+    "pymongo>=4.18.3",
+]
+
+[dependency-groups]
+dev = [
+    "diff-cover>=10.6.0",
+    "factory-boy>=3.3.3",
+    "import-linter>=2.15",
+    "moto[s3]>=5.2.3",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-django>=4.14.0",
+    "ruff>=0.17.0",
+    "time-machine>=3.5.1",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+testpaths = ["tests"]
+addopts = "-m 'not s3'"
+markers = [
+    "s3: 실제 dev 버킷 계약 테스트. 사용자가 요청할 때만 `-m s3`로 실행",
+]
+
+[tool.coverage.run]
+source = ["attachments"]
+omit = ["*/migrations/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "DJ"]
+
+# ===== import-linter (ADR-015) =====
+[tool.importlinter]
+root_package = "attachments"
+include_external_packages = true
+
+# 의존 방향: 위 계층은 아래 계층을 import할 수 있고, 역방향은 금지
+[[tool.importlinter.contracts]]
+name = "Layered architecture"
+type = "layers"
+layers = [
+    "attachments.views",
+    "attachments.services",
+    "attachments.selectors",
+    "attachments.storage | attachments.events",
+    "attachments.models",
+]
+
+# services·selectors는 DRF를 모른다
+# (django.http는 외부 패키지의 하위 모듈이라 import-linter로 금지할 수 없어 리뷰로 확인)
+[[tool.importlinter.contracts]]
+name = "Services and selectors are DRF-agnostic"
+type = "forbidden"
+source_modules = ["attachments.services", "attachments.selectors"]
+forbidden_modules = ["rest_framework"]
+
+# boto3는 storage 안에서만 (직접 import만 검사, services → storage → boto3 경로는 허용)
+[[tool.importlinter.contracts]]
+name = "boto3 only in storage"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "attachments.views",
+    "attachments.services",
+    "attachments.selectors",
+    "attachments.events",
+    "attachments.models",
+]
+forbidden_modules = ["boto3", "botocore"]
+
+# MongoDB는 events(relay) 안에서만
+[[tool.importlinter.contracts]]
+name = "pymongo only in events"
+type = "forbidden"
+allow_indirect_imports = true
+source_modules = [
+    "attachments.views",
+    "attachments.services",
+    "attachments.selectors",
+    "attachments.storage",
+    "attachments.models",
+]
+forbidden_modules = ["pymongo"]

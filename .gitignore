@@ -1,0 +1,119 @@
+# ===== Secrets =====
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ===== AWS =====
+.aws/
+*.pem
+credentials
+.aws-sam/
+
+# ===== Terraform (state는 로컬 파일, ADR-014) =====
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+tfplan
+*.tfplan
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.python-version.local
+
+# 테스트·린트·커버리지
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.import_linter_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# ===== Django =====
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# ===== Node / Vite (frontend) =====
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== Claude Code =====
+.claude/settings.local.json
+
+# ===== VS Code =====
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.code-workspace
+.history/
+
+# ===== Cursor =====
+.cursor/*
+!.cursor/rules/
+.cursorignore.local
+
+# ===== JetBrains (IntelliJ, PyCharm, WebStorm) =====
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# ===== Windows =====
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ===== macOS =====
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns

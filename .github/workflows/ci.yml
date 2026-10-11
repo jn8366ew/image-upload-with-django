@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [prod]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: image_upload
+          POSTGRES_USER: image_upload
+          POSTGRES_PASSWORD: ci-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U image_upload -d image_upload"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      mongo:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DJANGO_SECRET_KEY: ci-insecure-secret-key
+      POSTGRES_DB: image_upload
+      POSTGRES_USER: image_upload
+      POSTGRES_PASSWORD: ci-password
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      MONGO_URI: mongodb://127.0.0.1:27017/image_upload
+      TRUSTED_PROXY_HOPS: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Import contracts (ADR-015)
+        run: uv run lint-imports
+      - name: Django check
+        run: uv run python manage.py check
+      - name: Tests
+        run: uv run pytest --cov --cov-report=xml
+      # 변경된 비즈니스 로직 라인 커버리지 100% (ADR-010). prod가 생긴 뒤부터 동작.
+      - name: Diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          if git rev-parse --verify --quiet origin/prod >/dev/null; then
+            uv run diff-cover coverage.xml --compare-branch=origin/prod --fail-under=100 \
+              --include "*attachments/services/*" "*attachments/selectors/*" \
+                        "*attachments/storage/*" "*attachments/events/*" \
+                        "*attachments/management/commands/*"
+          else
+            echo "origin/prod 없음: diff-cover 건너뜀"
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc -b
+      - run: npm run coverage
+      # src/upload/ 변경 라인 커버리지 100% (ADR-010)
+      - name: Diff coverage
+        if: github.event_name == 'pull_request'
+        run: |
+          if git rev-parse --verify --quiet origin/prod >/dev/null; then
+            pipx run diff-cover coverage/cobertura-coverage.xml --compare-branch=origin/prod \
+              --fail-under=100 --include "*src/upload/*"
+          else
+            echo "origin/prod 없음: diff-cover 건너뜀"
+          fi
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check infra directory
+        id: infra
+        run: |
+          if [ -d infra ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.infra.outputs.exists == 'true'
+      - name: Terraform fmt / validate
+        if: steps.infra.outputs.exists == 'true'
+        working-directory: infra
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false
+          terraform validate
