@@ -58,7 +58,7 @@ flowchart LR
 리포 구조는 다음과 같습니다.
 
 - `backend/`: uv, Django 5.2, DRF, pytest-django, factory_boy, time-machine, moto, pymongo
-  - 개발 도구: ruff, import-linter(ADR-015 계약을 `pyproject.toml`에 설정, 초안은 `importlinter.toml`)
+  - 개발 도구: ruff, import-linter(ADR-015 계약은 `backend/pyproject.toml`에 설정)
 - `frontend/`: Vite + React + TS, Vitest, React Testing Library, MSW
 - `infra/`: Terraform
 - `docker-compose.yml`: Postgres, MongoDB (ADR-011)
@@ -71,6 +71,9 @@ CI는 GitHub Actions로 다음을 구성합니다.
 - diff-cover 게이트
 
 완료 기준: 빈 프로젝트에서 위 CI가 전부 통과합니다.
+
+- [x] 골격 작성, 로컬에서 CI와 같은 명령 전부 통과 (2026-10-11)
+- [ ] 첫 push 후 GitHub Actions 통과 (기준 브랜치: `prod`)
 
 ### 0-2. Terraform: S3 버킷 + 로컬 개발용 IAM + 비용 알림 (ADR-014)
 
