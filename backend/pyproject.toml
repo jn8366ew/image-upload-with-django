@@ -36,7 +36,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["attachments"]
+source = ["attachments", "accounts"]
 omit = ["*/migrations/*"]
 
 [tool.ruff]
@@ -49,7 +49,7 @@ select = ["E", "F", "I", "UP", "B", "DJ"]
 
 # ===== import-linter (ADR-015) =====
 [tool.importlinter]
-root_package = "attachments"
+root_packages = ["attachments", "accounts"]
 include_external_packages = true
 
 # 의존 방향: 위 계층은 아래 계층을 import할 수 있고, 역방향은 금지
@@ -99,3 +99,15 @@ source_modules = [
     "attachments.models",
 ]
 forbidden_modules = ["pymongo"]
+
+[[tool.importlinter.contracts]]
+name = "accounts does not depend on attachments"
+type = "forbidden"
+source_modules = ["accounts"]
+forbidden_modules = ["attachments"]
+
+[[tool.importlinter.contracts]]
+name = "attachments does not import accounts views"
+type = "forbidden"
+source_modules = ["attachments"]
+forbidden_modules = ["accounts.views"]

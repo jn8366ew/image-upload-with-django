@@ -144,12 +144,19 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-3. 인증 API
 
-- [ ] `test_csrf_endpoint_sets_cookie`
-- [ ] `test_login_creates_session`
-- [ ] `test_logout_clears_session`
-- [ ] `test_me_requires_authentication`: 미인증 403
-- [ ] `test_post_without_csrf_is_rejected`
-- [ ] Refactor 체크포인트
+근거: ADR-007 "인증 API". 별도 `accounts` 앱, 경로는 `/api/auth/*`(끝 슬래시 없음).
+
+- [x] `test_auth_user_model_is_custom`: `AUTH_USER_MODEL == "accounts.User"`
+- [x] `test_api_urls_have_no_trailing_slash`
+- [x] `test_csrf_endpoint_sets_cookie`
+- [x] `test_login_creates_session`
+- [x] `test_inactive_user_gets_same_invalid_credentials_response`: 없는 아이디·틀린 비밀번호·비활성 사용자 모두 400 `invalid credentials`
+- [x] `test_login_rotates_csrf_token`
+- [x] `test_logout_clears_session`
+- [x] `test_logout_rejects_get`: 405
+- [x] `test_me_requires_authentication`: 미인증 403
+- [x] `test_post_without_csrf_is_rejected`: 로그인(미인증)·로그아웃(인증) parametrize, `APIClient(enforce_csrf_checks=True)`, JSON 403
+- [x] Refactor 체크포인트
 
 ### 1-4. `POST /api/attachments/presign`
 
@@ -319,6 +326,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - `/api` proxy
 - TanStack Query
 - axios 인스턴스(CSRF 헤더)
+- [ ] `reads csrf token from cookie on every request`: 로그인 후 토큰이 바뀌어도 다음 POST에 새 토큰이 실림(ADR-007)
 
 ### 1-13. 사전 검증
 
@@ -369,6 +377,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 **Phase 1-F 게이트:** Vitest 전부 green. 실제 dev 버킷으로 다음 시나리오를 수동 확인합니다.
 - 다중 업로드 → 목록 → 다운로드 → 삭제
 - 브라우저 네트워크 탭에 S3 읽기 URL이 없음
+- Vite proxy 경유 로그인·업로드가 `Origin checking failed` 403 없이 동작함(`CSRF_TRUSTED_ORIGINS`, ADR-007)
 
 ---
 

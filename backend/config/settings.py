@@ -13,12 +13,14 @@ env = environ.Env(
     TRUSTED_PROXY_HOPS=(int, 0),
     AWS_REGION=(str, "ap-northeast-2"),
     S3_BUCKET=(str, ""),
+    CSRF_TRUSTED_ORIGINS=(list, ["http://localhost:5173"]),
 )
 environ.Env.read_env(REPO_ROOT / ".env")
 
 SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS")
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 
 INSTALLED_APPS = [
@@ -29,8 +31,11 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "accounts",
     "attachments",
 ]
+
+AUTH_USER_MODEL = "accounts.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

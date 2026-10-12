@@ -419,6 +419,26 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 - **효과:** 브라우저 입장에서 같은 도메인이라 세션 쿠키가 그대로 동작합니다. JWT, 토큰 갱신, 교차 origin 쿠키 문제를 피합니다.
 - **사용자 생성:** Django admin으로 만듭니다.
 
+### 인증 API (2026-10-12 결정)
+
+- **위치:** 별도 `accounts` 앱. view가 `django.contrib.auth`(`authenticate`·`login`·`logout`)를 직접 호출합니다(ADR-015 예외).
+- **User 모델:** `accounts.User(AbstractUser)`, 필드 추가 없음. `AUTH_USER_MODEL = "accounts.User"`. 나중에 바꾸면 FK가 걸린 마이그레이션을 모두 다시 짜야 하므로 처음부터 둡니다(Django 문서 "Using a custom user model when starting a project").
+- **경로:** 모든 API 경로는 끝 슬래시가 없습니다. `path()`로 명시 등록하고, router를 쓰면 `trailing_slash=False`입니다.
+
+| 메서드·경로 | 성공 | 실패 |
+| --- | --- | --- |
+| `GET /api/auth/csrf` | 204, `csrftoken` 쿠키 | |
+| `POST /api/auth/login` | 200 `{"username"}` | 400 `{"detail": "invalid credentials"}` (없는 아이디·틀린 비밀번호·비활성 사용자 모두 동일) |
+| `POST /api/auth/logout` | 204 | GET은 405 |
+| `GET /api/auth/me` | 200 `{"username"}` | 미인증 403 |
+
+- **CSRF 함정:**
+  - DRF `APIView.as_view()`는 view를 `csrf_exempt`로 감싸고, `SessionAuthentication`은 로그인한 사용자에게만 CSRF를 검사합니다. 로그인 view는 `SessionAuthentication().enforce_csrf(request)`를 직접 호출해 login CSRF를 막고, 실패 응답을 다른 API와 같은 JSON 403으로 맞춥니다.
+  - `login()`은 세션 키와 CSRF 토큰을 교체합니다. 프론트는 토큰을 캐시하지 않고 매 요청 쿠키에서 읽습니다(axios `xsrfCookieName: "csrftoken"`, `xsrfHeaderName: "X-CSRFToken"`).
+  - 로그아웃은 POST만 허용합니다. GET 로그아웃은 다른 사이트의 이미지 태그로 강제 로그아웃이 가능합니다.
+  - Django 4+는 HTTP에서도 `Origin`을 검사합니다. Vite proxy를 거치면 `Origin`이 `http://localhost:5173`으로 남으므로 `CSRF_TRUSTED_ORIGINS`에 넣습니다(env, 기본값 `http://localhost:5173`). `APIClient` 테스트로는 잡히지 않아 1-F 수동 시나리오로 확인합니다.
+- **로그인 시도 제한:** MVP에서는 두지 않습니다(로컬 전용, ADR-014). 미결 사항 참고.
+
 ### 고려한 대안
 
 | 대안 | 기각 이유 |
@@ -941,6 +961,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - **도메인 예외 → HTTP 상태 매핑**은 DRF 커스텀 `EXCEPTION_HANDLER` 한 곳에서만 합니다.
 - **signals는 쓰지 않습니다.**
 - **외부 I/O 라이브러리는 담당 계층에서만 import합니다.** boto3는 storage, pymongo는 events입니다.
+- **`accounts` 앱은 이 계층 구조 밖입니다.** view가 `django.contrib.auth`를 직접 호출하고 service 계층을 두지 않습니다(ADR-007). `accounts`는 `attachments`를 import하지 않고, `attachments`는 `accounts.views`를 import하지 않습니다(import-linter 계약).
 
 ### 결과
 
@@ -973,3 +994,4 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - [ ] 배포 MongoDB 호스팅: Atlas 무료 티어(기본안)와 egress 방식
 - [ ] `TRUSTED_PROXY_HOPS` 배포 값: 실제 헤더로 확정
 - [ ] 관측 도구: Datadog 또는 CloudWatch
+- [ ] 로그인 시도 제한: 배포 재개 시 필수. DRF `AnonRateThrottle`은 IP 기준이라 여러 IP에서 한 계정을 노리는 credential stuffing을 막지 못하므로, IP 기준과 username 기준(커스텀 throttle)을 병행합니다.
