@@ -117,3 +117,6 @@ Icon?
 .DocumentRevisions-V100
 .TemporaryItems
 .VolumeIcon.icns
+
+# spike 코드는 머지하지 않습니다 (CLAUDE.md)
+spikes/

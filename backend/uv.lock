@@ -35,6 +35,7 @@ dev = [
     { name = "pytest-django" },
     { name = "ruff" },
     { name = "time-machine" },
+    { name = "urllib3" },
 ]
 
 [package.metadata]
@@ -58,6 +59,7 @@ dev = [
     { name = "pytest-django", specifier = ">=4.14.0" },
     { name = "ruff", specifier = ">=0.17.0" },
     { name = "time-machine", specifier = ">=3.5.1" },
+    { name = "urllib3", specifier = ">=2.8.0" },
 ]
 
 [[package]]
