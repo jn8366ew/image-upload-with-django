@@ -90,7 +90,7 @@ CI 게이트는 변경된 비즈니스 로직 라인 커버리지 100%입니다(
 - API 응답에 `s3_key`, 버킷 이름, S3 도메인, presigned GET URL을 **절대** 넣지 않습니다. 식별자는 `public_id`만 씁니다. 예외는 presign 응답의 업로드 폼 하나뿐입니다(ADR-012).
 - 다운로드는 Django가 `get_object` 스트림을 `FileResponse`로 내려줍니다(`attachment`, `nosniff`, `private, no-store`). 리다이렉트하지 않습니다.
 - 인가는 항상 DB의 `created_by`와 로그인 사용자를 비교합니다. 클라이언트 값·S3 메타데이터로 판정하지 않습니다.
-- boto3 S3 클라이언트는 `region_name`과 `signature_version="s3v4"`를 반드시 명시합니다(누락 시 307 → CORS 업로드 실패).
+- boto3 S3 클라이언트는 `region_name`, `signature_version="s3v4"`, `s3={"addressing_style": "virtual"}`을 반드시 명시합니다. 하나라도 빠지면 presigned POST URL이 전역 엔드포인트로 나와 307 → CORS 업로드가 실패합니다(0-3 spike).
 - 시간은 UTC(`TIME_ZONE="UTC"`, `USE_TZ=True`)이고, 모든 시각은 서버가 찍습니다.
 - 확장자는 신뢰하지 않습니다. 포맷은 앞 8바이트 magic bytes로 판정하고, S3 key 확장자는 서버가 정합니다.
 - 이벤트는 비즈니스 상태 변경과 같은 Postgres 트랜잭션에서 `event_outbox`에 기록합니다. 요청 처리 경로에서 MongoDB를 직접 호출하지 않습니다.
@@ -103,7 +103,7 @@ CI 게이트는 변경된 비즈니스 로직 라인 커버리지 100%입니다(
 
 ## 미결 사항
 
-ADR 하단 "미결 사항"에 걸리는 값(크기 상한 2,500,000 vs 2,621,440바이트, presign 한도, 시간 표시 방식 등)은 임의로 정하지 말고 사용자에게 묻습니다. 정해지면 ADR에 반영합니다.
+ADR 하단 "미결 사항"에 걸리는 값(presign 한도, 시간 표시 방식 등)은 임의로 정하지 말고 사용자에게 묻습니다. 정해지면 ADR에 반영합니다.
 
 ## Lessons
 

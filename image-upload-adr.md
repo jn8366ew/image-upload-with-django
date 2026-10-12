@@ -106,7 +106,8 @@ sequenceDiagram
   - 400 → 중단(정책 위반)
   - 5xx·네트워크 오류 → 지수 backoff + jitter, 최대 4회
 - **업로드 HTTP는 XHR 기반(axios `onUploadProgress`)을 씁니다.** 진행률이 필요하기 때문입니다.
-- **boto3 클라이언트는 `region_name`과 `signature_version="s3v4"`를 명시합니다.** 빠지면 S3가 307 리다이렉트를 돌려주고, 브라우저가 CORS 요청에서 이를 따라가지 못해 업로드가 깨집니다.
+- **boto3 클라이언트는 `region_name`, `signature_version="s3v4"`, `s3={"addressing_style": "virtual"}`을 명시합니다.** 빠지면 presigned POST URL이 전역 엔드포인트(`<bucket>.s3.amazonaws.com`)로 생성되고, S3가 307 리다이렉트를 돌려주며, 브라우저가 CORS 요청에서 이를 따라가지 못해 업로드가 깨집니다.
+  - 0-3 spike(2026-10-12, botocore 1.43.111): region과 s3v4만 지정해도 URL이 전역 엔드포인트로 나와 307이 났습니다. `addressing_style="virtual"`을 더하면 `<bucket>.s3.ap-northeast-2.amazonaws.com`이 나오고 204로 성공했습니다.
 - **presign 응답의 S3 엔드포인트와 폼 필드는 업로드에만 쓰이는 쓰기 전용 정보입니다.** 파일을 읽는 URL은 어떤 응답에도 포함하지 않습니다(ADR-012).
 
 ### 고려한 대안
@@ -131,7 +132,7 @@ sequenceDiagram
 
 ### 결정
 
-- PNG·JPEG만 받고, 크기 상한은 2.5MB입니다.
+- PNG·JPEG만 받고, 크기 상한은 2.5MiB(2,621,440바이트, 이하 허용)입니다.
 - 크기와 선언 타입은 S3가 POST 정책으로 강제합니다.
 - 실제 포맷은 `/complete`에서 앞 8바이트로 확인합니다.
 - 확장자는 신뢰하지 않습니다.
@@ -156,6 +157,8 @@ sequenceDiagram
 ### 결과
 
 서버 측 이미지 처리 라이브러리(Pillow 등)가 필요 없습니다.
+
+**검증 (0-3, 2026-10-12):** 실제 dev 버킷에서 2,621,440바이트는 204, 1바이트 초과는 400 `EntityTooLarge`, Content-Type 불일치는 403 `Policy Condition failed`입니다. 계약 테스트: [`backend/tests/s3_contract/test_s3_presigned_post.py`](./backend/tests/s3_contract/test_s3_presigned_post.py) `test_s3_rejects_body_over_size_limit`, `test_s3_rejects_mismatched_content_type`.
 
 ---
 
@@ -369,7 +372,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 | 주체 | 권한 |
 | --- | --- |
-| 앱(ECS 태스크 롤, 로컬은 dev IAM) | 버킷 prefix에 대한 `PutObject`(서명용), `GetObject`, `DeleteObject` |
+| 앱(ECS 태스크 롤, 로컬은 dev IAM) | 버킷 prefix에 대한 `PutObject`(서명용), `GetObject`, `DeleteObject` + `s3:prefix`로 제한한 `ListBucket`(없는 객체에 403 대신 404를 받기 위함, 0-3 spike) |
 | 개발자 기본 계정 | 운영 버킷 `DeleteObject` 없음 |
 | break-glass 역할 | 콘솔 직접 삭제, 비상시에만 assume |
 
@@ -377,6 +380,8 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 - URL이 유출되면 최대 5분 동안 그 key 하나에 쓰기만 가능합니다.
 - 읽기 경로는 항상 세션 인증과 인가를 거칩니다.
+
+**검증 (0-3, 2026-10-12):** 만료된 POST는 403 `Policy expired`, 다른 key로 업로드는 403, CORS preflight는 `localhost:5173`만 허용(그 밖의 origin은 403), dev 권한의 없는 객체 HeadObject는 404(prefix 제한 `ListBucket` 필요)입니다. 계약 테스트: [`backend/tests/s3_contract/test_s3_presigned_post.py`](./backend/tests/s3_contract/test_s3_presigned_post.py) `test_s3_rejects_expired_post`, `test_s3_cors_preflight_allows_frontend_origin`, `test_s3_head_missing_object_returns_404`.
 
 ---
 
@@ -693,6 +698,8 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 - 다운로드 트래픽이 Django와 ALB를 지나므로 대역폭 비용과 워커 점유가 생깁니다.
 - gunicorn sync worker는 전송 동안 묶입니다. 2.5MB 상한에서는 수용 가능하지만, 동시 다운로드가 많아지면 워커 수를 조정해야 합니다.
 
+**검증 (0-3, 2026-10-12):** 인증 없는 GET은 403입니다. 계약 테스트: [`backend/tests/s3_contract/test_s3_presigned_post.py`](./backend/tests/s3_contract/test_s3_presigned_post.py) `test_s3_object_is_not_publicly_readable`.
+
 ---
 
 ## ADR-013 활동 로그: MongoDB + 트랜잭셔널 아웃박스
@@ -862,7 +869,7 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 | 리소스 | 용도 | 예상 비용 |
 | --- | --- | --- |
 | S3 버킷 1개 | 이미지 저장, 계약 테스트 | 테스트 수준이면 월 몇 센트 |
-| IAM 사용자(로컬 개발용) | 버킷 prefix 한정 `PutObject`·`GetObject`·`DeleteObject` | 무료 |
+| IAM 사용자(로컬 개발용) | 버킷 prefix 한정 `PutObject`·`GetObject`·`DeleteObject`·`ListBucket` | 무료 |
 | IAM OIDC 역할(CI용) | nightly `-m s3` 계약 테스트 | 무료 |
 | AWS Budgets | 실제 사용액 $1·$3, 예측 사용액 $3에 알림 | 무료 범위 |
 
@@ -955,7 +962,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 
 ## 미결 사항
 
-- [ ] 크기 상한의 정확한 값: 2,500,000바이트(2.5MB)인지 2,621,440바이트(2.5MiB)인지. 프론트와 S3 조건에 같은 값을 씁니다.
+- [x] 크기 상한의 정확한 값: **2,621,440바이트(2.5MiB)**로 확정(2026-10-12). 2,621,440바이트 이하만 허용합니다. 프론트와 S3 조건에 같은 값을 씁니다.
 - [ ] presign 한도: 요청당 최대 파일 수, 사용자별 시간당 발급 수
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지

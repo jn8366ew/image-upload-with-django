@@ -18,6 +18,21 @@ data "aws_iam_policy_document" "dev_attachments" {
     ]
     resources = ["${aws_s3_bucket.attachments.arn}/${var.attachments_prefix}*"]
   }
+
+  # ListBucket이 없으면 없는 객체에 HeadObject가 404 대신 403을 받아,
+  # /complete의 "객체 없음(409)"과 권한 오류를 구분할 수 없습니다 (0-3 spike, ADR-003).
+  statement {
+    sid       = "AttachmentsPrefixList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.attachments.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["${var.attachments_prefix}*"]
+    }
+  }
 }
 
 resource "aws_iam_user_policy" "dev_attachments" {

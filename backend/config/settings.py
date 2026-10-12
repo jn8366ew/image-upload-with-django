@@ -11,6 +11,8 @@ env = environ.Env(
     POSTGRES_HOST=(str, "127.0.0.1"),
     POSTGRES_PORT=(int, 5432),
     TRUSTED_PROXY_HOPS=(int, 0),
+    AWS_REGION=(str, "ap-northeast-2"),
+    S3_BUCKET=(str, ""),
 )
 environ.Env.read_env(REPO_ROOT / ".env")
 
@@ -105,3 +107,8 @@ REST_FRAMEWORK = {
 
 # 활동 로그 IP 추출 (ADR-013). 로컬은 0.
 TRUSTED_PROXY_HOPS = env("TRUSTED_PROXY_HOPS")
+
+
+# S3 (ADR-001). 자격 증명은 AWS_PROFILE로 boto3가 직접 읽습니다.
+AWS_REGION = env("AWS_REGION")
+S3_BUCKET = env("S3_BUCKET")

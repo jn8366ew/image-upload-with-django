@@ -92,12 +92,13 @@ state는 로컬 파일로 두고 gitignore합니다.
 - [x] Lifecycle: prefix `attachments/` Expiration 370일, AbortIncompleteMultipartUpload 1일
 - [x] CORS: origin `http://localhost:5173`, 메서드 POST만 허용
 - [x] dev IAM 권한이 버킷 prefix의 `PutObject`·`GetObject`·`DeleteObject`로 한정된다
+- [x] dev IAM에 `s3:prefix=attachments/*`로 제한한 `ListBucket`이 있다 (0-3 spike: 없으면 없는 객체 HeadObject가 403)
 - [x] 버킷 암호화가 SSE-S3(`AES256`)다. KMS 고객 관리형 키를 쓰지 않는다
 - [x] AWS Budgets: 실제 사용액 $1·$3, 예측 사용액 $3 알림이 있다
 - [x] 정의된 리소스가 S3·IAM·Budgets뿐이다: 허용 목록 밖 리소스 타입을 정적으로 금지(plan 대신 `.tf` 검사, 자격 증명 불필요)
-- [ ] CI infra job에서 위 검사와 checkov 통과
+- [x] CI infra job에서 위 검사와 checkov 통과
 - [x] 실제 계정에 `terraform apply` (관리자 프로파일 준비 후, 사용자 요청 시)
-- [ ] dev IAM 사용자 액세스 키를 콘솔에서 발급해 `~/.aws`의 `image-upload-dev` 프로파일에 등록, `.env`에 `AWS_PROFILE`·`S3_BUCKET` 반영
+- [x] dev IAM 사용자 액세스 키를 콘솔에서 발급해 `~/.aws`의 `image-upload-dev` 프로파일에 등록, `.env`에 `AWS_PROFILE`·`S3_BUCKET` 반영
 
 AWS 액세스 키는 `~/.aws` 프로파일에만 두고, 리포와 `.env`에 커밋하지 않습니다. Terraform으로 액세스 키를 만들지 않습니다(tfstate에 평문으로 남음).
 CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹니다.
@@ -107,12 +108,13 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 1. `spikes/`에서 presigned POST로 수동 업로드해 동작을 확인합니다.
 2. 확인된 동작을 `@pytest.mark.s3` 테스트로 고정합니다.
 
-- [ ] `test_s3_rejects_body_over_size_limit`: 2.5MB 초과 본문은 S3가 거부한다
-- [ ] `test_s3_rejects_mismatched_content_type`: 정책과 다른 Content-Type은 거부된다
-- [ ] `test_s3_rejects_expired_post`: 만료된 presigned POST는 403
-- [ ] `test_s3_cors_preflight_allows_frontend_origin`
-- [ ] `test_s3_client_without_region_gets_redirect`: 리전·SigV4 미지정 시 307 (회귀 방지)
-- [ ] `test_s3_object_is_not_publicly_readable`: 인증 없는 GET은 403
+- [x] `test_s3_rejects_body_over_size_limit`: 2,621,440바이트(2.5MiB) 초과 본문은 S3가 거부한다
+- [x] `test_s3_rejects_mismatched_content_type`: 정책과 다른 Content-Type은 거부된다
+- [x] `test_s3_rejects_expired_post`: 만료된 presigned POST는 403
+- [x] `test_s3_cors_preflight_allows_frontend_origin`
+- [x] `test_s3_presigned_post_uses_regional_endpoint_and_succeeds`: presign URL 호스트가 리전 엔드포인트이고, 그 URL로 업로드하면 204 (307 회귀 방지, spike 결과로 대체)
+- [x] `test_s3_head_missing_object_returns_404`: dev 권한으로 없는 객체 HeadObject는 404 (ADR-003 409 판정 전제)
+- [x] `test_s3_object_is_not_publicly_readable`: 인증 없는 GET은 403
 
 완료 기준: `pytest -m s3` 통과. 결과를 ADR-002·006·012에 링크합니다.
 

@@ -96,14 +96,36 @@ run "cors_allows_only_frontend_origin_post" {
 run "dev_user_limited_to_attachments_prefix" {
   command = plan
 
+  # 문장은 두 종류만 허용합니다: prefix 객체 Put/Get/Delete, prefix로 제한한 ListBucket.
   assert {
     condition = alltrue([
       for s in data.aws_iam_policy_document.dev_attachments.statement :
-      s.effect == "Allow"
-      && toset(s.actions) == toset(["s3:PutObject", "s3:GetObject", "s3:DeleteObject"])
-      && alltrue([for r in s.resources : endswith(r, "/attachments/*")])
+      s.effect == "Allow" && (
+        (
+          toset(s.actions) == toset(["s3:PutObject", "s3:GetObject", "s3:DeleteObject"])
+          && alltrue([for r in s.resources : endswith(r, "/attachments/*")])
+        )
+        || (
+          toset(s.actions) == toset(["s3:ListBucket"])
+          && toset(s.resources) == toset(["arn:aws:s3:::image-upload-test-bucket"])
+          && length(s.condition) == 1
+          && alltrue([
+            for c in s.condition :
+            c.test == "StringLike" && c.variable == "s3:prefix" && toset(c.values) == toset(["attachments/*"])
+          ])
+        )
+      )
     ])
-    error_message = "dev IAM 권한은 버킷 attachments/ prefix의 PutObject·GetObject·DeleteObject로 한정되어야 합니다."
+    error_message = "dev IAM 권한은 attachments/ prefix의 PutObject·GetObject·DeleteObject와, s3:prefix=attachments/*로 제한한 ListBucket뿐이어야 합니다."
+  }
+
+  # 없는 객체에 HeadObject가 403이 아닌 404를 받으려면 ListBucket이 필요합니다 (0-3 spike, ADR-003).
+  assert {
+    condition = anytrue([
+      for s in data.aws_iam_policy_document.dev_attachments.statement :
+      s.effect == "Allow" && contains(s.actions, "s3:ListBucket")
+    ])
+    error_message = "dev IAM에 attachments/ prefix로 제한한 s3:ListBucket이 있어야 합니다."
   }
 }
 
