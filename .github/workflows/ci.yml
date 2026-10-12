@@ -101,18 +101,22 @@ jobs:
 
   infra:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
     steps:
       - uses: actions/checkout@v4
-      - name: Check infra directory
-        id: infra
-        run: |
-          if [ -d infra ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; else echo "exists=false" >> "$GITHUB_OUTPUT"; fi
       - uses: hashicorp/setup-terraform@v3
-        if: steps.infra.outputs.exists == 'true'
       - name: Terraform fmt / validate
-        if: steps.infra.outputs.exists == 'true'
-        working-directory: infra
         run: |
           terraform fmt -check -recursive
-          terraform init -backend=false
+          terraform init -backend=false -input=false
           terraform validate
+      # 보안·비용 설정 단언 (mock provider, AWS 자격 증명 불필요)
+      - name: Terraform test
+        run: terraform test
+      # 허용 목록 밖 리소스 타입 금지 (ADR-014)
+      - name: Resource type allowlist
+        run: bash scripts/check_resource_types.sh
+      - name: Checkov
+        run: pipx run checkov -d . --quiet --compact --framework terraform

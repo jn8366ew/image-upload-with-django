@@ -73,7 +73,7 @@ CI는 GitHub Actions로 다음을 구성합니다.
 완료 기준: 빈 프로젝트에서 위 CI가 전부 통과합니다.
 
 - [x] 골격 작성, 로컬에서 CI와 같은 명령 전부 통과 (2026-10-11)
-- [ ] 첫 push 후 GitHub Actions 통과 (기준 브랜치: `prod`)
+- [x] 첫 push 후 GitHub Actions 통과 (기준 브랜치: `prod`, 2026-10-11)
 
 ### 0-2. Terraform: S3 버킷 + 로컬 개발용 IAM + 비용 알림 (ADR-014)
 
@@ -81,18 +81,26 @@ state는 로컬 파일로 두고 gitignore합니다.
 
 `terraform test` / checkov로 먼저 단언합니다.
 
-- [ ] Block Public Access 4개 설정이 모두 켜져 있다
-- [ ] Versioning이 꺼져 있다
-- [ ] 버킷 정책에 `aws:SecureTransport=false` Deny가 있다
-- [ ] ACL이 비활성(Bucket owner enforced)이다
-- [ ] Lifecycle: prefix `attachments/` Expiration 370일, AbortIncompleteMultipartUpload 1일
-- [ ] CORS: origin `http://localhost:5173`, 메서드 POST만 허용
-- [ ] dev IAM 권한이 버킷 prefix의 `PutObject`·`GetObject`·`DeleteObject`로 한정된다
-- [ ] 버킷 암호화가 SSE-S3(`AES256`)다. KMS 고객 관리형 키를 쓰지 않는다
-- [ ] AWS Budgets: 실제 사용액 $1·$3, 예측 사용액 $3 알림이 있다
-- [ ] 정의된 리소스가 S3·IAM·Budgets뿐이다: 시간 과금 리소스 타입(ALB, NAT, RDS, ECS, CloudFront)이 plan에 없음을 단언
+- 단언: `infra/tests/security.tftest.hcl`(mock provider, AWS 자격 증명 불필요)
+- 리소스 타입 허용 목록: `infra/scripts/check_resource_types.sh`(정적 검사)
+- 각 단언은 설정을 일부러 깨뜨렸을 때 실패하는 것을 확인했습니다(2026-10-12).
 
-AWS 액세스 키는 `~/.aws` 프로파일에만 두고, 리포와 `.env`에 커밋하지 않습니다.
+- [x] Block Public Access 4개 설정이 모두 켜져 있다
+- [x] Versioning이 꺼져 있다: `aws_s3_bucket_versioning` 리소스 자체를 금지(허용 목록 스크립트). 한 번 켜면 되돌릴 수 없기 때문
+- [x] 버킷 정책에 `aws:SecureTransport=false` Deny가 있다
+- [x] ACL이 비활성(Bucket owner enforced)이다
+- [x] Lifecycle: prefix `attachments/` Expiration 370일, AbortIncompleteMultipartUpload 1일
+- [x] CORS: origin `http://localhost:5173`, 메서드 POST만 허용
+- [x] dev IAM 권한이 버킷 prefix의 `PutObject`·`GetObject`·`DeleteObject`로 한정된다
+- [x] 버킷 암호화가 SSE-S3(`AES256`)다. KMS 고객 관리형 키를 쓰지 않는다
+- [x] AWS Budgets: 실제 사용액 $1·$3, 예측 사용액 $3 알림이 있다
+- [x] 정의된 리소스가 S3·IAM·Budgets뿐이다: 허용 목록 밖 리소스 타입을 정적으로 금지(plan 대신 `.tf` 검사, 자격 증명 불필요)
+- [ ] CI infra job에서 위 검사와 checkov 통과
+- [x] 실제 계정에 `terraform apply` (관리자 프로파일 준비 후, 사용자 요청 시)
+- [ ] dev IAM 사용자 액세스 키를 콘솔에서 발급해 `~/.aws`의 `image-upload-dev` 프로파일에 등록, `.env`에 `AWS_PROFILE`·`S3_BUCKET` 반영
+
+AWS 액세스 키는 `~/.aws` 프로파일에만 두고, 리포와 `.env`에 커밋하지 않습니다. Terraform으로 액세스 키를 만들지 않습니다(tfstate에 평문으로 남음).
+CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹니다.
 
 ### 0-3. S3 spike → 계약 테스트
 
