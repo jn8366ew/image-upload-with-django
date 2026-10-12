@@ -124,7 +124,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-1. 모델과 DB 제약 (ADR-004)
 
-- [ ] `test_completed_requires_uploaded_at`: 위반 시 `IntegrityError`
+- [x] `test_completed_requires_uploaded_at`: 위반 시 `IntegrityError`
 - [ ] `test_deleted_at_only_for_completed_or_deleting`: PENDING 상태에 `deleted_at` → `IntegrityError`
 - [ ] `test_public_id_and_s3_key_are_unique`
 - [ ] `test_timestamps_are_utc`: 저장·조회 시 tz가 UTC
