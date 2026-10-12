@@ -30,6 +30,10 @@ class Attachment(models.Model):
                 condition=~Q(status="COMPLETED") | Q(uploaded_at__isnull=False),
                 name="att_completed_has_uploaded_at",
             ),
+            models.CheckConstraint(
+                condition=Q(deleted_at__isnull=True) | Q(status__in=["COMPLETED", "DELETING"]),
+                name="att_deleted_at_only_completed_or_deleting",
+            ),
         ]
         indexes = [
             models.Index(
