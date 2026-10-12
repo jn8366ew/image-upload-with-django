@@ -17,7 +17,7 @@ def bucket() -> str:
 
 @pytest.fixture
 def s3():
-    # region·s3v4·virtual 셋 다 있어야 presign URL이 리전 엔드포인트로 나옵니다 (ADR-001).
+    # 셋 중 하나라도 빠지면 presign URL이 전역 엔드포인트로 나와 307이 납니다.
     return boto3.client(
         "s3",
         region_name=settings.AWS_REGION,
@@ -27,7 +27,6 @@ def s3():
 
 @pytest.fixture
 def new_key(s3, bucket):
-    """테스트용 key를 만들고, 테스트가 끝나면 그 key의 객체를 지웁니다."""
     keys: list[str] = []
 
     def make() -> str:

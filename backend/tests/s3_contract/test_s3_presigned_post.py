@@ -1,9 +1,3 @@
-"""실제 dev 버킷에 대한 S3 동작 계약 (로드맵 0-3, ADR-001·002·006·012).
-
-우리 코드가 믿는 S3 동작을 고정합니다. 실제 AWS를 호출하므로
-사용자가 요청할 때만 `uv run pytest -m s3`로 실행합니다.
-"""
-
 import time
 
 import pytest
@@ -13,7 +7,7 @@ from django.conf import settings
 
 pytestmark = pytest.mark.s3
 
-MAX_BYTES = 2_621_440  # 2.5MiB (ADR-002)
+MAX_BYTES = 2_621_440
 FRONTEND_ORIGIN = "http://localhost:5173"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
