@@ -132,15 +132,15 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-2. `StorageGateway` (fake + boto3 어댑터, moto)
 
-- [ ] `test_presign_post_returns_url_and_fields`
-- [ ] `test_head_missing_key_raises_object_not_found`
-- [ ] `test_read_prefix_requests_range_0_7`
-- [ ] `test_open_returns_stream_and_content_type`
-- [ ] `test_open_missing_key_raises_object_not_found`
-- [ ] `test_delete_missing_key_succeeds`
-- [ ] `test_delete_many_returns_failed_keys`: `delete_objects` 부분 실패
-- [ ] `test_fake_gateway_matches_adapter_contract`: 같은 테스트 세트를 fake와 어댑터 양쪽에 실행
-- [ ] Refactor 체크포인트
+- [x] `test_presign_post_returns_url_and_fields`
+- [x] `test_head_missing_key_raises_object_not_found`
+- [x] `test_read_prefix_requests_range_0_7`
+- [x] `test_open_returns_stream_and_content_type`
+- [x] `test_open_missing_key_raises_object_not_found`
+- [x] `test_delete_missing_key_succeeds`
+- [x] `test_delete_failure_raises_storage_error`: S3 오류는 `StorageError`로 매핑 (배치는 key마다 `delete_object`, ADR-005)
+- [x] `test_fake_gateway_matches_adapter_contract`: 같은 테스트 세트를 fake와 어댑터 양쪽에 실행
+- [x] Refactor 체크포인트
 
 ### 1-3. 인증 API
 
@@ -227,7 +227,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_uploaded_365_days_is_purged`
 - [ ] `test_uploaded_364_days_is_kept`
 - [ ] `test_leftover_deleting_rows_are_retried`
-- [ ] `test_bulk_purge_keeps_failed_keys_deleting`: `delete_objects` 부분 실패
+- [ ] `test_purge_keeps_rows_deleting_when_s3_delete_fails`: 삭제 실패한 key의 행만 `DELETING`으로 남음
 - [ ] `test_concurrent_runs_do_not_double_process`: Postgres + 스레드 2개, `skip_locked`
 - [ ] Refactor 체크포인트
 

@@ -314,7 +314,7 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 재시도합니다.
 
 - **멱등성:** `delete_object`는 없는 key에도 204를 돌려주므로, 재시도해도 안전합니다.
-- **대량 만료:** `delete_objects`(호출 1회에 최대 1000개)를 씁니다. 응답의 `Errors`에 있는 key만 `DELETING`으로 남깁니다.
+- **배치 삭제:** 배치도 key마다 `delete_object`를 호출합니다. 실패한 key의 행만 `DELETING`으로 남고 다음 배치가 재시도합니다. (2026-10-12 결정: MVP 규모에서 `delete_objects` 묶음 삭제와 1,000개 분할은 불필요. DELETE 요청은 무료)
 
 ### 동시성
 
@@ -580,7 +580,7 @@ AWS 리소스는 Terraform으로 정의합니다. 기능 개발에 필요한 S3�
 | --- | --- | --- | --- |
 | 서비스 단위 | pytest, factory_boy, time-machine, fake gateway | 상태 전이, 권한, 배치 규칙, DB 제약 | 매 커밋 |
 | API | DRF `APIClient` | 인증·인가, 상태 코드, 응답 형태, key·URL 비노출 | 매 커밋 |
-| 어댑터 | moto | Range 헤더, `get_object` 스트림, `delete_objects` 부분 실패 | 매 커밋 |
+| 어댑터 | moto | Range 헤더, `get_object` 스트림, 삭제 실패 시 예외 | 매 커밋 |
 | 이벤트 | 실제 MongoDB(mongomock 미사용) | 릴레이 멱등성, TTL·unique 인덱스, aggregation | 매 커밋 |
 | S3 계약 | 실제 dev 버킷, `@pytest.mark.s3` | 크기·타입 조건 강제, 만료 403, CORS preflight, 307 회귀 | 수동·nightly |
 | 프론트 단위 | Vitest | 업로드 reducer, 동시성 풀, 사전 검증 | 매 커밋 |
