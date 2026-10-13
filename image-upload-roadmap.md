@@ -224,11 +224,14 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-8. `DELETE /api/attachments/{public_id}` (소프트 삭제)
 
-- [ ] `test_soft_delete_forbidden_for_non_uploader`: 403
-- [ ] `test_soft_delete_sets_deleted_at`
-- [ ] `test_soft_delete_does_not_call_storage`
-- [ ] `test_soft_delete_is_idempotent`
-- [ ] Refactor 체크포인트
+- [x] `test_soft_delete_requires_authentication`: 403 (보안 가드)
+- [x] `test_soft_delete_forbidden_for_non_uploader`: 403
+- [x] `test_soft_delete_unknown_or_incomplete_returns_404`: `PENDING`·`REJECTED`·`DELETING`·없는 id
+- [x] `test_soft_delete_sets_deleted_at`: 204
+- [x] `test_soft_delete_is_idempotent`: 두 번째 호출도 204, `deleted_at` 불변
+- [x] Refactor 체크포인트
+
+`test_soft_delete_does_not_call_storage`는 두지 않습니다(2026-10-13 결정). `soft_delete`가 `StorageGateway`를 인자로 받지 않아 구조상 S3를 호출할 수 없고, Red가 나올 수 없는 테스트이기 때문입니다.
 
 ### 1-9. 하드 삭제 서비스 `purge()`
 

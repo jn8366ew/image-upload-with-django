@@ -330,6 +330,20 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 | 인프라·개발자 | 하드 삭제 | `manage.py purge_attachment --id` | 즉시 하드 삭제, 감사 로그에 `requested_by_id` 기록 |
 | 인프라(비상시) | 콘솔 직접 삭제 | break-glass IAM 역할 | DB는 그대로 → 다운로드 시 객체 없음으로 처리 |
 
+### 삭제 API (2026-10-13 결정)
+
+`DELETE /api/attachments/{public_id}`. 판정은 위에서부터 순서대로 합니다.
+
+| 상황 | 응답 |
+| --- | --- |
+| 없는 id, `COMPLETED`가 아닌 첨부(`PENDING`·`REJECTED`·`DELETING`) | 404 |
+| 타인 첨부(이미 소프트 삭제된 것 포함) | 403 |
+| 본인 첨부 | 204 (본문 없음) |
+| 본인 첨부 재호출(이미 소프트 삭제됨) | 204, `deleted_at`은 최초 값 유지 |
+
+- `deleted_at`을 덮어쓰면 재호출마다 30일 퍼지 타이머가 다시 시작됩니다. 그래서 `filter(deleted_at__isnull=True).update()`로 한 번만 기록합니다. 동시 요청에도 한 번만 기록되고, 이벤트는 반환값이 1일 때만 남깁니다(1-19).
+- 미완료 첨부는 목록·다운로드에 보이지 않으므로 사용자에게는 없는 것과 같습니다. 정리는 배치가 합니다.
+
 ### 하드 삭제 순서
 
 1. `DELETING` 전환 + 감사 로그 기록

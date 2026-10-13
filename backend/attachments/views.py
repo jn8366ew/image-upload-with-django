@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from attachments.selectors.attachments import list_user_attachments
 from attachments.serializers import AttachmentListItemSerializer, PresignRequestSerializer
 from attachments.services.completion import complete_upload
+from attachments.services.deletion import soft_delete
 from attachments.services.downloads import open_download
 from attachments.services.uploads import UploadRequest, presign_uploads
 from attachments.storage.s3 import build_s3_gateway
@@ -57,6 +58,12 @@ class AttachmentListView(APIView):
         paginator = AttachmentCursorPagination()
         page = paginator.paginate_queryset(list_user_attachments(request.user), request, self)
         return paginator.get_paginated_response(AttachmentListItemSerializer(page, many=True).data)
+
+
+class AttachmentDetailView(APIView):
+    def delete(self, request, public_id):
+        soft_delete(request.user, public_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DownloadView(APIView):
