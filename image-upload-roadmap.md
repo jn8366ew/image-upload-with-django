@@ -235,12 +235,18 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-9. 하드 삭제 서비스 `purge()`
 
-- [ ] `test_purge_marks_deleting_and_writes_log_before_storage_call`
-- [ ] `test_purge_log_copies_uploaded_at_and_deleted_at`
-- [ ] `test_purge_deletes_object_then_row`
-- [ ] `test_purge_storage_failure_keeps_deleting_row`
-- [ ] `test_purge_records_requested_by_for_ops`
-- [ ] Refactor 체크포인트
+계약: `purge(attachment_id, *, gateway, requested_by=None) -> bool` (삭제 True, 건너뜀 False). ADR-005 "서비스 계약". 바깥 `atomic`을 금지하므로 테스트는 `transactional_db`를 씁니다.
+
+- [x] `test_purge_marks_deleting_and_writes_log_before_storage_call`
+- [x] `test_purge_log_copies_uploaded_at_and_deleted_at`
+- [x] `test_purge_deletes_object_then_row`
+- [x] `test_purge_storage_failure_keeps_deleting_row`: `StorageError` 전파, 행은 `DELETING`, 로그 1건
+- [x] `test_purge_retry_does_not_duplicate_log`: 이미 `DELETING`인 행 → 로그 추가 없이 객체·행 삭제
+- [x] `test_purge_skips_missing_row`: False
+- [x] `test_purge_skips_row_locked_by_another_transaction`: False, 행·객체 그대로
+- [x] `test_purge_inside_atomic_raises_runtime_error`
+- [x] `test_purge_records_requested_by_for_ops`
+- [x] Refactor 체크포인트
 
 ### 1-10. `manage.py attachment_maintenance` (time-machine)
 
@@ -255,6 +261,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_leftover_deleting_rows_are_retried`
 - [ ] `test_purge_keeps_rows_deleting_when_s3_delete_fails`: 삭제 실패한 key의 행만 `DELETING`으로 남음
 - [ ] `test_concurrent_runs_do_not_double_process`: Postgres + 스레드 2개, `skip_locked`
+- [ ] `test_maintenance_reports_counts`: 반환 dataclass의 `processed`·`purged`·`skipped`·`failed`·실행 후 `DELETING` 잔량
+- [ ] `test_maintenance_command_exits_nonzero_on_auth_error`: 일시 실패만 있으면 0. `StorageGateway`에 인증 오류 예외가 필요(계약 테스트 → fake → 어댑터 순서)
 - [ ] Refactor 체크포인트
 
 ### 1-11. `manage.py purge_attachment --id`

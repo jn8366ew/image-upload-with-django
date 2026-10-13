@@ -267,6 +267,8 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
     purged_at = models.DateTimeField(auto_now_add=True)
 ```
 
+- **`purged_at`의 의미 (2026-10-13 결정):** 실제로 파일이 지워진 시각이 아니라 **하드 삭제를 시작한 시각**(`DELETING` 전환 시각)입니다. 로그는 S3 삭제 전에 남기므로, S3 삭제가 계속 실패하면 로그는 있지만 파일과 `DELETING` 행은 남아 있습니다. 남은 건수는 배치 실행 결과(`DELETING` 잔량)로 확인합니다(ADR-008).
+
 - **S3 key 형식:** `attachments/{user_id}/{uuid}.{png|jpg}`
 - **버킷 이름:** settings에 둡니다.
 
@@ -352,12 +354,21 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 
 S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 재시도합니다.
 
+**서비스 계약 (2026-10-13 결정):** `purge(attachment_id, *, gateway, requested_by=None)`
+
+- **트랜잭션 경계:** 1단계만 짧은 트랜잭션으로 먼저 커밋하고, 2·3단계는 그 밖에서 실행합니다. 셋을 한 트랜잭션으로 묶으면 S3 삭제 뒤 3단계가 실패할 때 1단계까지 롤백되어, 파일은 없는데 행은 원래 상태로 남고 로그도 사라집니다.
+- **바깥 트랜잭션 금지:** 바깥 `atomic` 안에서 호출되면 `RuntimeError`입니다. 바깥 트랜잭션이 1단계 커밋을 붙잡아 위 경계가 무너지기 때문입니다.
+- **잠금:** 1단계에서 `select_for_update(skip_locked=True)`로 행을 다시 읽습니다. 행이 없거나 다른 실행이 잠그고 있으면 건너뜁니다.
+- **재시도:** 이미 `DELETING`인 행이면 로그를 다시 남기지 않고 2·3단계만 실행합니다. 감사 로그는 첨부당 1건입니다.
+- **실패:** S3 삭제 실패는 `StorageError`를 그대로 던집니다. 배치는 그 행을 실패로 세고 다음 행으로 넘어가며, 운영 명령은 실패로 종료합니다.
+- **운영 삭제:** `requested_by`에 운영자를 넘기면 감사 로그의 `requested_by_id`에 기록됩니다. 시스템 배치는 null입니다.
+
 - **멱등성:** `delete_object`는 없는 key에도 204를 돌려주므로, 재시도해도 안전합니다.
 - **배치 삭제:** 배치도 key마다 `delete_object`를 호출합니다. 실패한 key의 행만 `DELETING`으로 남고 다음 배치가 재시도합니다. (2026-10-12 결정: MVP 규모에서 `delete_objects` 묶음 삭제와 1,000개 분할은 불필요. DELETE 요청은 무료)
 
 ### 동시성
 
-배치는 `select_for_update(skip_locked=True)`로 대상 행을 잠급니다. 두 실행이 겹쳐도 같은 행을 중복 처리하지 않습니다.
+배치는 잠금 없이 대상 id만 고르고, 행마다 `purge()`를 호출합니다. `purge()`가 1단계에서 `select_for_update(skip_locked=True)`로 행을 다시 읽어 잠그므로, 두 실행이 겹쳐도 같은 행의 1단계(전환·로그)를 중복 처리하지 않습니다. 잠긴 행과 이미 사라진 행은 건너뜁니다. 1단계가 커밋된 뒤 2·3단계가 겹치더라도 `delete_object`와 행 삭제가 멱등이라 안전합니다. (2026-10-13 수정)
 
 ### S3 설정
 
@@ -512,6 +523,10 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 4. 업로드 후 1년 경과 → 하드 삭제
 5. 남아 있는 `DELETING` 재시도
 6. 발행 완료 후 7일 지난 `event_outbox` 행 삭제(ADR-013)
+
+**실행 결과 (2026-10-13 결정):**
+- 배치 서비스가 결과 dataclass를 반환합니다. 필드는 `processed`, `purged`, `skipped`, `failed`, 그리고 실행 후 남은 `DELETING` 건수입니다. 명령은 이 값을 출력만 합니다. 테스트는 반환값으로 검증합니다.
+- **종료 코드:** 인증 오류로 중단하면 비정상 종료합니다. 일시 실패(행 단위 `StorageError`)만 있으면 0입니다.
 
 ### 고려한 대안
 

@@ -54,3 +54,17 @@ class Attachment(models.Model):
 
     def __str__(self) -> str:
         return str(self.public_id)
+
+
+class AttachmentPurgeLog(models.Model):
+    attachment_public_id = models.UUIDField()
+    created_by_id = models.BigIntegerField()
+    s3_key = models.CharField(max_length=512)
+    original_filename = models.CharField(max_length=255)
+    uploaded_at = models.DateTimeField(null=True)
+    deleted_at = models.DateTimeField(null=True)
+    requested_by_id = models.BigIntegerField(null=True)
+    purged_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return str(self.attachment_public_id)
