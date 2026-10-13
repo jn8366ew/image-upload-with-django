@@ -196,13 +196,17 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-6. `GET /api/attachments` (내 목록)
 
-- [ ] `test_list_returns_only_own_attachments`
-- [ ] `test_list_excludes_pending_rejected_deleting`
-- [ ] `test_list_excludes_soft_deleted`
-- [ ] `test_list_ordered_by_uploaded_at_desc`
-- [ ] `test_list_items_expose_only_public_fields`: `public_id`, `original_filename`, `uploaded_at`
-- [ ] `test_list_response_has_no_s3_key_bucket_or_s3_domain`
-- [ ] Refactor 체크포인트
+근거: ADR-004 "내 목록 API".
+
+- [x] `test_list_requires_authentication`: 보안 가드(ADR-010)
+- [x] `test_list_returns_only_own_attachments`
+- [x] `test_list_excludes_pending_rejected_deleting`
+- [x] `test_list_excludes_soft_deleted`
+- [x] `test_list_ordered_by_uploaded_at_desc`
+- [x] `test_list_items_expose_only_public_fields`: `public_id`, `original_filename`, `uploaded_at`
+- [x] `test_list_response_has_no_s3_key_bucket_or_s3_domain`: 보안 가드(ADR-010)
+- [x] `test_list_paginates_with_cursor`: 50개씩, `next` 커서로 나머지, 중복·누락 없음
+- [x] Refactor 체크포인트
 
 ### 1-7. `GET /api/attachments/{public_id}/download` (ADR-012)
 

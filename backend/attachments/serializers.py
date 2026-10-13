@@ -15,3 +15,9 @@ class UploadRequestSerializer(serializers.Serializer):
 
 class PresignRequestSerializer(serializers.Serializer):
     files = UploadRequestSerializer(many=True, allow_empty=False)
+
+
+class AttachmentListItemSerializer(serializers.Serializer):
+    public_id = serializers.UUIDField()
+    original_filename = serializers.CharField()
+    uploaded_at = serializers.DateTimeField()

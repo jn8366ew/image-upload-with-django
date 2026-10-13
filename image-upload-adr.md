@@ -279,6 +279,14 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 | `att_expire_idx` | `uploaded_at` | `status='COMPLETED'` | 1년 만료 |
 | `att_list_idx` | `created_by, uploaded_at` | `status='COMPLETED' AND deleted_at IS NULL` | 내 첨부 목록 |
 
+### 내 목록 API (2026-10-13 결정)
+
+- `GET /api/attachments`: 본인의 `COMPLETED`이면서 소프트 삭제되지 않은 첨부만 반환합니다.
+- **커서 페이지네이션**(DRF `CursorPagination`), 페이지당 50개(추정 값), 정렬 `-uploaded_at, -id`. 응답은 `{"next", "previous", "results": [{"public_id", "original_filename", "uploaded_at"}]}`입니다.
+  - 선택 이유는 성능이 아니라 화면("더 보기")과 응답 모양 고정입니다. 넘기는 중 업로드·삭제가 있어도 중복·누락이 없습니다.
+  - `id` 2차 정렬은 `uploaded_at`이 같은 행이 페이지 경계에서 빠지지 않게 합니다.
+- `uploaded_at`은 UTC ISO 8601로 줍니다. 화면 표시 방식은 미결 사항입니다.
+
 ### CHECK 제약
 
 - `status='COMPLETED'`이면 `uploaded_at`이 반드시 있다.
