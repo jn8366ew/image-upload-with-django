@@ -21,3 +21,15 @@ class UploadRejected(DomainError):
         super().__init__(reason)
         self.reason = reason
         self.client_ref = client_ref
+
+
+class NotOwner(DomainError):
+    pass
+
+
+class AttachmentNotFound(DomainError):
+    pass
+
+
+class UploadNotReceived(DomainError):
+    pass

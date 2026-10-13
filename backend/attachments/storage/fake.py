@@ -29,9 +29,10 @@ class InMemoryStorageGateway:
             fields={"key": key, "Content-Type": content_type, "policy": policy},
         )
 
-    def head(self, key: str) -> None:
+    def head(self, key: str) -> str:
         if key not in self.objects:
             raise ObjectNotFound(key)
+        return self.objects[key][1]
 
     def read_prefix(self, key: str) -> bytes:
         return self.objects[key][0][:8]

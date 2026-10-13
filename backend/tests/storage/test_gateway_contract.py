@@ -35,6 +35,12 @@ def test_head_missing_key_raises_object_not_found(store):
         store.gateway.head("attachments/1/missing.png")
 
 
+def test_head_returns_content_type(store):
+    store.put(KEY, b"data", "image/jpeg")
+
+    assert store.gateway.head(KEY) == "image/jpeg"
+
+
 def test_read_prefix_requests_range_0_7(store):
     body = b"\x89PNG\r\n\x1a\n" + b"rest-of-image"
     store.put(KEY, body, "image/png")

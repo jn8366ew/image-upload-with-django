@@ -4,6 +4,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from attachments.serializers import PresignRequestSerializer
+from attachments.services.completion import complete_upload
 from attachments.services.uploads import UploadRequest, presign_uploads
 from attachments.storage.s3 import build_s3_gateway
 
@@ -34,3 +35,9 @@ class PresignView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class CompleteView(APIView):
+    def post(self, request, public_id):
+        attachment = complete_upload(request.user, public_id, gateway=build_s3_gateway())
+        return Response({"public_id": str(attachment.public_id), "status": attachment.status})

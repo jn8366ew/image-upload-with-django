@@ -189,6 +189,20 @@ sequenceDiagram
 3. 이미 `COMPLETED`인 첨부에 대한 재호출 → 200 (멱등)
 4. 배치: 24시간 넘은 `PENDING` → `head_object`로 같은 검증 수행, 객체가 없으면 하드 삭제 경로로
 
+### `/complete` 응답 (2026-10-13 결정)
+
+| 상황 | 응답 |
+| --- | --- |
+| 통과(`COMPLETED`), 재호출 포함 | 200 `{"public_id", "status": "COMPLETED"}` |
+| 시그니처 불일치·8바이트 미만·선언 타입과 실제 포맷 불일치(`REJECTED`), 재호출 포함 | 400 `{"detail": "invalid_format"}` |
+| 객체 없음 | 409, `PENDING` 유지. S3는 쓰기 직후 읽기가 일관되므로 업로드 실패를 뜻하며, 프론트는 "재업로드 필요(retryable)"로 분류 |
+| 다른 사용자의 첨부 | 403 |
+| 없는 `public_id`, 소프트 삭제·`DELETING` | 404 |
+
+- **선언 타입:** `head_object`의 Content-Type(POST 정책으로 고정된 값)으로 읽습니다. 모델에 컬럼을 두지 않습니다. 실제 포맷이 선언 타입과 다르면 PNG·JPEG라도 `REJECTED`입니다.
+- **거절 시 S3 삭제 실패:** `REJECTED`와 400은 그대로 두고 경고 로그만 남깁니다. 남은 객체는 일일 배치의 `REJECTED` 정리가 지웁니다.
+- **동시 호출:** 결과가 같아 MVP는 잠금 없이 둡니다. 이벤트 기록(1-19)은 `filter(status=PENDING).update(...)`의 반환값이 1일 때만 기록하는 조건부 갱신으로 중복을 막습니다.
+
 ### 고려한 대안
 
 S3 Event Notifications → SQS → Lambda, 또는 브리지 프로세스 + Celery.

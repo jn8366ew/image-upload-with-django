@@ -40,9 +40,10 @@ class S3StorageGateway:
         )
         return PresignedPost(url=form["url"], fields=form["fields"])
 
-    def head(self, key: str) -> None:
+    def head(self, key: str) -> str:
         with _mapped_errors(key):
-            self._client.head_object(Bucket=self._bucket, Key=key)
+            obj = self._client.head_object(Bucket=self._bucket, Key=key)
+        return obj["ContentType"]
 
     def read_prefix(self, key: str) -> bytes:
         obj = self._client.get_object(Bucket=self._bucket, Key=key, Range="bytes=0-7")

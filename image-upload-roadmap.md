@@ -176,14 +176,23 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-5. `POST /api/attachments/{public_id}/complete`
 
-- [ ] `test_complete_forbidden_for_other_user`: 403
-- [ ] `test_complete_missing_object_returns_409_and_stays_pending`
-- [ ] `test_complete_png_signature_marks_completed`: `uploaded_at` 기록
-- [ ] `test_complete_jpeg_signature_marks_completed`
-- [ ] `test_complete_mismatched_signature_rejects_and_deletes_object`
-- [ ] `test_complete_is_idempotent`: 두 번째 호출 200
-- [ ] `test_complete_response_has_no_s3_key_or_url`
-- [ ] Refactor 체크포인트
+근거: ADR-003 "`/complete` 응답".
+
+- [x] `test_head_returns_content_type`: storage 계약 테스트(fake·moto), `head()`가 Content-Type 반환
+- [x] `test_complete_requires_authentication`: 보안 가드(ADR-010)
+- [x] `test_complete_forbidden_for_other_user`: 403
+- [x] `test_complete_unknown_or_deleted_returns_404`: 없는 id·소프트 삭제·`DELETING`
+- [x] `test_complete_missing_object_returns_409_and_stays_pending`
+- [x] `test_complete_png_signature_marks_completed`: `uploaded_at` 기록
+- [x] `test_complete_jpeg_signature_marks_completed`
+- [x] `test_complete_mismatched_signature_rejects_and_deletes_object`: 400 `invalid_format`
+- [x] `test_complete_signature_must_match_declared_type`: PNG 선언 + JPEG 바이트 → `REJECTED`
+- [x] `test_complete_file_shorter_than_signature_rejects`: 8바이트 미만 → `REJECTED`, 예외 없음
+- [x] `test_complete_reject_keeps_rejected_when_delete_fails`: 경고 로그, 400
+- [x] `test_complete_rejected_again_returns_400`
+- [x] `test_complete_is_idempotent`: 두 번째 호출 200, 같은 본문
+- [x] `test_complete_response_has_no_s3_key_or_url`: 보안 가드(ADR-010)
+- [x] Refactor 체크포인트
 
 ### 1-6. `GET /api/attachments` (내 목록)
 
@@ -268,6 +277,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 ### 1-19. 아웃박스 기록 (같은 트랜잭션)
 
 - [ ] `test_complete_writes_upload_completed_event`
+- [ ] `test_concurrent_complete_writes_one_event`: `filter(status=PENDING).update()` 반환값 1일 때만 기록(ADR-003)
 - [ ] `test_reject_writes_upload_rejected_event`
 - [ ] `test_download_writes_downloaded_event_with_ip_and_user_agent`
 - [ ] `test_download_denied_writes_no_event`: 403·404에서는 기록하지 않음
@@ -343,6 +353,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `progress event updates only the target file`
 - [ ] `403 clears presign and retries`
 - [ ] `400 moves to fatal failed`
+- [ ] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
 - [ ] `network error retries with backoff up to 4 times`
 - [ ] `exhausted retries move to retryable failed`
 - [ ] `cancel moves uploading file to cancelled`
