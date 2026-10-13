@@ -1,3 +1,4 @@
+from django.http import FileResponse
 from rest_framework import status
 from rest_framework.pagination import CursorPagination
 from rest_framework.response import Response
@@ -7,6 +8,7 @@ from rest_framework.views import APIView
 from attachments.selectors.attachments import list_user_attachments
 from attachments.serializers import AttachmentListItemSerializer, PresignRequestSerializer
 from attachments.services.completion import complete_upload
+from attachments.services.downloads import open_download
 from attachments.services.uploads import UploadRequest, presign_uploads
 from attachments.storage.s3 import build_s3_gateway
 
@@ -55,3 +57,17 @@ class AttachmentListView(APIView):
         paginator = AttachmentCursorPagination()
         page = paginator.paginate_queryset(list_user_attachments(request.user), request, self)
         return paginator.get_paginated_response(AttachmentListItemSerializer(page, many=True).data)
+
+
+class DownloadView(APIView):
+    def get(self, request, public_id):
+        download = open_download(request.user, public_id, gateway=build_s3_gateway())
+        response = FileResponse(
+            download.stored.stream,
+            as_attachment=True,
+            filename=download.attachment.original_filename,
+            content_type=download.stored.content_type,
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        return response

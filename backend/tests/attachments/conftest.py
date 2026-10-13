@@ -36,11 +36,11 @@ def make_attachment(user):
     def make(owner=None, status=Attachment.Status.PENDING, ext=".png", **fields):
         owner = owner or user
         public_id = uuid.uuid4()
+        fields.setdefault("original_filename", f"photo{ext}")
         return Attachment.objects.create(
             public_id=public_id,
             created_by=owner,
             s3_key=f"attachments/{owner.pk}/{public_id}{ext}",
-            original_filename=f"photo{ext}",
             status=status,
             **fields,
         )

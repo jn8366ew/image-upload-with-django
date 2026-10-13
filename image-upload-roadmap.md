@@ -210,16 +210,17 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-7. `GET /api/attachments/{public_id}/download` (ADR-012)
 
-- [ ] `test_download_forbidden_for_other_user`: 403
-- [ ] `test_download_soft_deleted_returns_404`
-- [ ] `test_download_pending_returns_404`
-- [ ] `test_download_streams_object_bytes`: 응답 본문 = 객체 바이트
-- [ ] `test_download_sets_attachment_disposition_with_original_filename`: 한글 파일명 `filename*`
-- [ ] `test_download_sets_content_type_from_object`
-- [ ] `test_download_sets_nosniff_and_no_store`
-- [ ] `test_download_missing_object_returns_404_and_logs_warning`
-- [ ] `test_download_response_has_no_redirect_or_s3_url`: 3xx 아님, 헤더·본문에 S3 도메인 없음
-- [ ] Refactor 체크포인트
+- [x] `test_download_requires_authentication`: 보안 가드(ADR-010)
+- [x] `test_download_forbidden_for_other_user`: 403
+- [x] `test_download_soft_deleted_returns_404`
+- [x] `test_download_pending_returns_404`: `PENDING`·`REJECTED`·`DELETING`·없는 id
+- [x] `test_download_streams_object_bytes`: 응답 본문 = 객체 바이트
+- [x] `test_download_sets_attachment_disposition_with_original_filename`: 한글 파일명 `filename*`
+- [x] `test_download_sets_content_type_from_object`
+- [x] `test_download_sets_nosniff_and_no_store`
+- [x] `test_download_missing_object_returns_404_and_logs_warning`
+- [x] `test_download_response_has_no_redirect_or_s3_url`: 3xx 아님, 헤더·본문에 S3 도메인 없음. 보안 가드(ADR-010)
+- [x] Refactor 체크포인트
 
 ### 1-8. `DELETE /api/attachments/{public_id}` (소프트 삭제)
 
