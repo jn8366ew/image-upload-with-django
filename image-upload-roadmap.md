@@ -160,17 +160,19 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-4. `POST /api/attachments/presign`
 
-- [ ] `test_presign_requires_authentication`
-- [ ] `test_presign_rejects_too_many_files`: 400
-- [ ] `test_presign_rejects_disallowed_type`: `image/heic`, `image/svg+xml` → 400
-- [ ] `test_presign_rejects_oversized_file`: 400
-- [ ] `test_presign_creates_pending_per_file`
-- [ ] `test_presign_policy_contains_size_type_key_conditions`: policy base64 디코딩
-- [ ] `test_presign_key_extension_matches_mime`: `.png` / `.jpg`
-- [ ] `test_presign_key_is_scoped_to_user`: `attachments/{user_id}/...`
-- [ ] `test_presign_response_exposes_public_id_per_file`
-- [ ] `test_presign_throttled_after_limit`: 429
-- [ ] Refactor 체크포인트
+- [x] `test_presign_requires_authentication`
+- [x] `test_presign_rejects_too_many_files`: 400
+- [x] `test_presign_rejects_disallowed_type`: `image/heic`, `image/svg+xml` → 400
+- [x] `test_presign_rejects_oversized_file`: 400
+- [x] `test_presign_rejected_request_creates_no_rows`: 유효 1장 + HEIC 1장 → 400, 행 0개
+- [x] `test_presign_rejects_invalid_filename`: 255자 초과·빈 이름·NUL·줄바꿈 → 400
+- [x] `test_presign_creates_pending_per_file`
+- [x] `test_presign_policy_contains_size_type_key_conditions`: policy base64 디코딩
+- [x] `test_presign_key_extension_matches_mime`: `.png` / `.jpg`
+- [x] `test_presign_key_is_scoped_to_user`: `attachments/{user_id}/...`
+- [x] `test_presign_response_echoes_client_ref_with_public_id`: 201, `s3_key`·버킷 필드 없음
+- [x] `test_presign_throttled_after_limit`: 429
+- [x] Refactor 체크포인트
 
 ### 1-5. `POST /api/attachments/{public_id}/complete`
 
@@ -386,6 +388,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 ```bash
 docker compose up -d                                  # Postgres, MongoDB
 cd backend && uv run python manage.py migrate
+uv run python manage.py createcachetable              # presign throttle용 DatabaseCache
 uv run python manage.py ensure_mongo_indexes
 uv run python manage.py runserver                     # API (TRUSTED_PROXY_HOPS=0)
 uv run python manage.py relay_events --loop           # 별도 터미널: 아웃박스 → MongoDB

@@ -14,3 +14,10 @@ class ObjectNotFound(DomainError):
 
 class StorageError(DomainError):
     pass
+
+
+class UploadRejected(DomainError):
+    def __init__(self, reason: str, client_ref: str | None = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.client_ref = client_ref
