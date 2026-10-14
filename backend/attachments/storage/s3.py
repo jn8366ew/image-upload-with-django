@@ -3,11 +3,26 @@ from contextlib import contextmanager
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 from django.conf import settings
 
-from attachments.exceptions import ObjectNotFound, StorageError
+from attachments.exceptions import ObjectNotFound, StorageAuthError, StorageError
 from attachments.storage.gateway import PresignedPost, StoredObject
+
+AUTH_ERROR_CODES = frozenset(
+    {
+        "AccessDenied",
+        "InvalidAccessKeyId",
+        "SignatureDoesNotMatch",
+        "RequestTimeTooSkewed",
+        "InvalidSecurity",
+        "AccountProblem",
+        "ExpiredToken",
+        "InvalidToken",
+        "TokenRefreshRequired",
+        "NoSuchBucket",
+    }
+)
 
 
 @contextmanager
@@ -15,9 +30,14 @@ def _mapped_errors(key: str) -> Iterator[None]:
     try:
         yield
     except ClientError as e:
-        if e.response["Error"]["Code"] in ("404", "NoSuchKey"):
+        code = e.response["Error"]["Code"]
+        if code in ("404", "NoSuchKey"):
             raise ObjectNotFound(key) from e
+        if code in AUTH_ERROR_CODES:
+            raise StorageAuthError(key) from e
         raise StorageError(key) from e
+    except (NoCredentialsError, PartialCredentialsError) as e:
+        raise StorageAuthError(key) from e
 
 
 class S3StorageGateway:

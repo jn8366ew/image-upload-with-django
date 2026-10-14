@@ -2,7 +2,7 @@ import base64
 import io
 import json
 
-from attachments.exceptions import ObjectNotFound, StorageError
+from attachments.exceptions import ObjectNotFound, StorageAuthError, StorageError
 from attachments.storage.gateway import PresignedPost, StoredObject
 
 
@@ -11,6 +11,8 @@ class InMemoryStorageGateway:
         self.bucket = bucket
         self.objects: dict[str, tuple[bytes, str]] = {}
         self.fail_delete_for: set[str] = set()
+        self.fail_head_for: set[str] = set()
+        self.auth_broken = False
 
     def put(self, key: str, body: bytes, content_type: str) -> None:
         self.objects[key] = (body, content_type)
@@ -30,6 +32,8 @@ class InMemoryStorageGateway:
         )
 
     def head(self, key: str) -> str:
+        if key in self.fail_head_for:
+            raise StorageError(key)
         if key not in self.objects:
             raise ObjectNotFound(key)
         return self.objects[key][1]
@@ -43,6 +47,8 @@ class InMemoryStorageGateway:
         return StoredObject(stream=io.BytesIO(body), content_type=content_type)
 
     def delete(self, key: str) -> None:
+        if self.auth_broken:
+            raise StorageAuthError(key)
         if key in self.fail_delete_for:
             raise StorageError(key)
         self.objects.pop(key, None)

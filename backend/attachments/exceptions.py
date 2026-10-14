@@ -16,6 +16,10 @@ class StorageError(DomainError):
     pass
 
 
+class StorageAuthError(StorageError):
+    """재시도해도 해결되지 않는 인증·권한·설정 오류."""
+
+
 class UploadRejected(DomainError):
     def __init__(self, reason: str, client_ref: str | None = None) -> None:
         super().__init__(reason)

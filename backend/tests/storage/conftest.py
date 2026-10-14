@@ -35,6 +35,7 @@ class Store:
     put: Callable[[str, bytes, str], None]
     bucket: str
     fail_delete: Callable[[str], None]
+    break_auth: Callable[[], None]
     sent_ranges: list[str] | None = None
 
 
@@ -42,7 +43,11 @@ class Store:
 def store(request):
     if request.param == "fake":
         fake = InMemoryStorageGateway()
-        return Store(fake, fake.put, fake.bucket, fake.fail_delete_for.add)
+
+        def break_fake_auth() -> None:
+            fake.auth_broken = True
+
+        return Store(fake, fake.put, fake.bucket, fake.fail_delete_for.add, break_fake_auth)
 
     client = request.getfixturevalue("aws")
 
@@ -57,6 +62,14 @@ def store(request):
     )
 
     def fail_delete(key: str) -> None:
+        error = {"Error": {"Code": "InternalError", "Message": "internal"}}
+
+        def denied(**_):
+            raise ClientError(error, "DeleteObject")
+
+        gateway._client.delete_object = denied
+
+    def break_auth() -> None:
         error = {"Error": {"Code": "AccessDenied", "Message": "denied"}}
 
         def denied(**_):
@@ -64,4 +77,4 @@ def store(request):
 
         gateway._client.delete_object = denied
 
-    return Store(gateway, put, BUCKET, fail_delete, sent_ranges)
+    return Store(gateway, put, BUCKET, fail_delete, break_auth, sent_ranges)

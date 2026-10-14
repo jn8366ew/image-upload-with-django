@@ -354,7 +354,16 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 
 S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 재시도합니다.
 
-**서비스 계약 (2026-10-13 결정):** `purge(attachment_id, *, gateway, requested_by=None)`
+**서비스 계약 (2026-10-13 결정, 2026-10-14 반환값 보완):** `purge(attachment_id, *, gateway, requested_by=None) -> PurgeOutcome`
+
+| 반환값 | 뜻 |
+| --- | --- |
+| `PURGED` | 3단계 행 삭제가 1건을 지웠을 때만. 이번 호출이 실제로 행을 지웠습니다 |
+| `ALREADY_GONE` | 1단계에서 행이 없음(잠금 없는 `exists()`로 확인), 또는 3단계 행 삭제가 0건(다른 실행이 먼저 지움) |
+| `SKIPPED_LOCKED` | 행은 있지만(`exists()` True) 다른 실행이 잠그고 있어 `select_for_update(skip_locked=True)`가 행을 주지 않음 |
+
+- **보완 이유 (2026-10-14):** 1단계 커밋 뒤 잠금이 풀리므로, 두 실행이 같은 행의 2·3단계를 함께 진행할 수 있습니다. 데이터는 멱등이라 안전하지만, 둘 다 "삭제함"을 반환하면 배치 집계가 실제 삭제 건수보다 커집니다(1-10 동시 실행 테스트에서 20건에 21로 재현). 그래서 "삭제함"은 실제로 행을 지운 호출 하나에만 돌려줍니다.
+- 배치(ADR-008)는 `PURGED`를 `purged`로, 나머지 둘을 `skipped`로 셉니다.
 
 - **트랜잭션 경계:** 1단계만 짧은 트랜잭션으로 먼저 커밋하고, 2·3단계는 그 밖에서 실행합니다. 셋을 한 트랜잭션으로 묶으면 S3 삭제 뒤 3단계가 실패할 때 1단계까지 롤백되어, 파일은 없는데 행은 원래 상태로 남고 로그도 사라집니다.
 - **바깥 트랜잭션 금지:** 바깥 `atomic` 안에서 호출되면 `RuntimeError`입니다. 바깥 트랜잭션이 1단계 커밋을 붙잡아 위 경계가 무너지기 때문입니다.
@@ -517,16 +526,30 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 ### `attachment_maintenance`가 하는 일
 
-1. 24시간 넘은 `PENDING` → 객체 확인 후 검증 또는 하드 삭제
-2. `REJECTED` 행 정리
-3. 소프트 삭제 후 30일 경과 → 하드 삭제
-4. 업로드 후 1년 경과 → 하드 삭제
-5. 남아 있는 `DELETING` 재시도
+1. 남아 있는 `DELETING` 재시도
+2. 24시간 넘은 `PENDING` → `finalize_pending`으로 검증
+   - 객체가 있고 형식이 맞으면 `COMPLETED`, `uploaded_at`은 배치 실행 시각(ADR-004 "검증 통과 시각")
+   - 객체가 없으면 하드 삭제
+   - 형식이 틀리면 `REJECTED`로 바뀌고, 별도 분기 없이 3단계에서 같은 실행 안에 삭제됩니다
+3. `REJECTED` 행 정리
+4. 소프트 삭제 후 30일 경과 → 하드 삭제
+5. 업로드 후 1년 경과 → 하드 삭제
 6. 발행 완료 후 7일 지난 `event_outbox` 행 삭제(ADR-013)
 
-**실행 결과 (2026-10-13 결정):**
-- 배치 서비스가 결과 dataclass를 반환합니다. 필드는 `processed`, `purged`, `skipped`, `failed`, 그리고 실행 후 남은 `DELETING` 건수입니다. 명령은 이 값을 출력만 합니다. 테스트는 반환값으로 검증합니다.
-- **종료 코드:** 인증 오류로 중단하면 비정상 종료합니다. 일시 실패(행 단위 `StorageError`)만 있으면 0입니다.
+**실행 규칙 (2026-10-14 결정):**
+- **순서:** `DELETING` 재시도를 맨 앞에 둡니다. 뒤 단계에서 실패해 `DELETING`으로 남은 행은 같은 실행에서 다시 시도하지 않고 다음 실행이 처리합니다. 한 행이 한 실행에서 두 번 시도·집계되지 않습니다.
+- **대상 선정:** 각 단계는 시작할 때 잠금 없이 id만 고르고, 잠금은 `purge()`가 겁니다(ADR-005 동시성).
+- **기준 시각:** `now`는 실행 시작 시 한 번만 구해 모든 단계에 씁니다.
+- **경계:** 기준 시각에서 정확히 24시간·30일·365일이 지난 행은 처리 대상입니다(`<=`). 1초라도 모자라면 유지합니다.
+
+**실행 결과 (2026-10-13 결정, 2026-10-14 보완):**
+- 배치 서비스가 결과 dataclass를 반환합니다. 필드는 `processed`, `completed`, `purged`, `skipped`, `failed`, 그리고 실행 후 남은 `DELETING` 건수입니다. 명령은 이 값을 출력만 합니다. 테스트는 반환값으로 검증합니다.
+- **불변식:** `processed == completed + purged + skipped + failed`
+- **종료 코드:** `StorageAuthError`(아래)로 중단하면 비정상 종료합니다. 일시 실패(행 단위 `StorageError`)만 있으면 0입니다.
+
+**`StorageAuthError` (2026-10-14 결정):** `StorageError`의 하위 예외로, "재시도해도 해결되지 않는 인증·권한·설정 오류"입니다. 어댑터는 HTTP 상태가 아니라 오류 코드 allowlist로 분류합니다(S3 공식 Error Responses 문서 기준, 사용자 확인).
+- 대상: `AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`, `RequestTimeTooSkewed`, `InvalidSecurity`, `AccountProblem`, `ExpiredToken`, `InvalidToken`, `TokenRefreshRequired`, `NoSuchBucket`, botocore `NoCredentialsError`·`PartialCredentialsError`
+- 그 밖의 오류는 일시 오류(`StorageError`)입니다. 예: `RequestTimeout`은 400이지만 일시 오류입니다.
 
 ### 고려한 대안
 

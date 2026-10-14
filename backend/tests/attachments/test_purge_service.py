@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from attachments.exceptions import StorageError
 from attachments.models import Attachment, AttachmentPurgeLog
-from attachments.services.purge import purge
+from attachments.services.purge import PurgeOutcome, purge
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -40,7 +40,7 @@ def test_purge_marks_deleting_and_writes_log_before_storage_call(stored, gateway
 
     monkeypatch.setattr(gateway, "delete", spy)
 
-    assert purge(att.pk, gateway=gateway) is True
+    assert purge(att.pk, gateway=gateway) is PurgeOutcome.PURGED
     assert seen == {"status": Attachment.Status.DELETING, "logs": 1}
 
 
@@ -83,7 +83,7 @@ def test_purge_retry_does_not_duplicate_log(stored, gateway):
         purge(att.pk, gateway=gateway)
     gateway.fail_delete_for.clear()
 
-    assert purge(att.pk, gateway=gateway) is True
+    assert purge(att.pk, gateway=gateway) is PurgeOutcome.PURGED
 
     assert logs_for(att).count() == 1
     assert att.s3_key not in gateway.objects
@@ -91,7 +91,7 @@ def test_purge_retry_does_not_duplicate_log(stored, gateway):
 
 
 def test_purge_skips_missing_row(gateway):
-    assert purge(999_999, gateway=gateway) is False
+    assert purge(999_999, gateway=gateway) is PurgeOutcome.ALREADY_GONE
     assert not AttachmentPurgeLog.objects.exists()
 
 
@@ -117,9 +117,23 @@ def test_purge_skips_row_locked_by_another_transaction(stored, gateway):
         release.set()
         holder.join()
 
-    assert result is False
+    assert result is PurgeOutcome.SKIPPED_LOCKED
     assert Attachment.objects.get(pk=att.pk).status == Attachment.Status.COMPLETED
     assert att.s3_key in gateway.objects
+
+
+def test_purge_returns_already_gone_when_row_removed_by_another_run(stored, gateway, monkeypatch):
+    att = stored()
+    real_delete = gateway.delete
+
+    def delete_then_other_run_removes_row(key):
+        real_delete(key)
+        Attachment.objects.filter(pk=att.pk).delete()
+
+    monkeypatch.setattr(gateway, "delete", delete_then_other_run_removes_row)
+
+    assert purge(att.pk, gateway=gateway) is PurgeOutcome.ALREADY_GONE
+    assert logs_for(att).count() == 1
 
 
 def test_purge_inside_atomic_raises_runtime_error(stored, gateway):

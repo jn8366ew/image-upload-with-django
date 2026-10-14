@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from attachments.exceptions import ObjectNotFound, StorageError
+from attachments.exceptions import ObjectNotFound, StorageAuthError, StorageError
 
 KEY = "attachments/1/abc.png"
 MAX_BYTES = 2_621_440
@@ -79,4 +79,12 @@ def test_delete_failure_raises_storage_error(store):
     store.fail_delete(KEY)
 
     with pytest.raises(StorageError):
+        store.gateway.delete(KEY)
+
+
+def test_delete_auth_failure_raises_storage_auth_error(store):
+    store.put(KEY, b"data", "image/png")
+    store.break_auth()
+
+    with pytest.raises(StorageAuthError):
         store.gateway.delete(KEY)

@@ -1,10 +1,18 @@
+from enum import Enum
+
 from django.db import transaction
 
 from attachments.models import Attachment, AttachmentPurgeLog
 from attachments.storage.gateway import StorageGateway
 
 
-def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> bool:
+class PurgeOutcome(Enum):
+    PURGED = "purged"
+    ALREADY_GONE = "already_gone"
+    SKIPPED_LOCKED = "skipped_locked"
+
+
+def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> PurgeOutcome:
     if transaction.get_connection().in_atomic_block:
         raise RuntimeError("purge must not run inside an outer transaction")
     with transaction.atomic():
@@ -12,12 +20,14 @@ def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> 
             Attachment.objects.select_for_update(skip_locked=True).filter(pk=attachment_id).first()
         )
         if attachment is None:
-            return False
+            if Attachment.objects.filter(pk=attachment_id).exists():
+                return PurgeOutcome.SKIPPED_LOCKED
+            return PurgeOutcome.ALREADY_GONE
         if attachment.status != Attachment.Status.DELETING:
             _start_purge(attachment, requested_by)
     gateway.delete(attachment.s3_key)
-    Attachment.objects.filter(pk=attachment_id).delete()
-    return True
+    deleted, _ = Attachment.objects.filter(pk=attachment_id).delete()
+    return PurgeOutcome.PURGED if deleted == 1 else PurgeOutcome.ALREADY_GONE
 
 
 def _start_purge(attachment: Attachment, requested_by) -> None:

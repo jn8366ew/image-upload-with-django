@@ -235,35 +235,49 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-9. 하드 삭제 서비스 `purge()`
 
-계약: `purge(attachment_id, *, gateway, requested_by=None) -> bool` (삭제 True, 건너뜀 False). ADR-005 "서비스 계약". 바깥 `atomic`을 금지하므로 테스트는 `transactional_db`를 씁니다.
+계약: `purge(attachment_id, *, gateway, requested_by=None) -> PurgeOutcome` (`PURGED`·`ALREADY_GONE`·`SKIPPED_LOCKED`, 2026-10-14에 bool에서 변경). ADR-005 "서비스 계약". 바깥 `atomic`을 금지하므로 테스트는 `transactional_db`를 씁니다.
 
 - [x] `test_purge_marks_deleting_and_writes_log_before_storage_call`
 - [x] `test_purge_log_copies_uploaded_at_and_deleted_at`
 - [x] `test_purge_deletes_object_then_row`
 - [x] `test_purge_storage_failure_keeps_deleting_row`: `StorageError` 전파, 행은 `DELETING`, 로그 1건
 - [x] `test_purge_retry_does_not_duplicate_log`: 이미 `DELETING`인 행 → 로그 추가 없이 객체·행 삭제
-- [x] `test_purge_skips_missing_row`: False
-- [x] `test_purge_skips_row_locked_by_another_transaction`: False, 행·객체 그대로
+- [x] `test_purge_skips_missing_row`: `ALREADY_GONE` (2026-10-14 False에서 변경)
+- [x] `test_purge_skips_row_locked_by_another_transaction`: `SKIPPED_LOCKED`, 행·객체 그대로 (2026-10-14 False에서 변경)
+- [x] `test_purge_returns_already_gone_when_row_removed_by_another_run`: 2·3단계 사이에 다른 실행이 행을 지움 → `ALREADY_GONE`, 로그 1건 (2026-10-14 버그 재현)
 - [x] `test_purge_inside_atomic_raises_runtime_error`
 - [x] `test_purge_records_requested_by_for_ops`
 - [x] Refactor 체크포인트
 
 ### 1-10. `manage.py attachment_maintenance` (time-machine)
 
-- [ ] `test_pending_older_than_24h_with_valid_object_is_completed`
-- [ ] `test_pending_older_than_24h_without_object_is_purged`
-- [ ] `test_pending_younger_than_24h_is_untouched`
-- [ ] `test_rejected_rows_are_purged`
-- [ ] `test_soft_deleted_30_days_is_purged`
-- [ ] `test_soft_deleted_29_days_is_kept`
-- [ ] `test_uploaded_365_days_is_purged`
-- [ ] `test_uploaded_364_days_is_kept`
-- [ ] `test_leftover_deleting_rows_are_retried`
-- [ ] `test_purge_keeps_rows_deleting_when_s3_delete_fails`: 삭제 실패한 key의 행만 `DELETING`으로 남음
-- [ ] `test_concurrent_runs_do_not_double_process`: Postgres + 스레드 2개, `skip_locked`
-- [ ] `test_maintenance_reports_counts`: 반환 dataclass의 `processed`·`purged`·`skipped`·`failed`·실행 후 `DELETING` 잔량
-- [ ] `test_maintenance_command_exits_nonzero_on_auth_error`: 일시 실패만 있으면 0. `StorageGateway`에 인증 오류 예외가 필요(계약 테스트 → fake → 어댑터 순서)
-- [ ] Refactor 체크포인트
+규칙: ADR-008 "실행 규칙"·"실행 결과"·"`StorageAuthError`". 경계 테스트는 정확히 24시간·30일·365일이면 처리, 1초 모자라면 유지입니다.
+
+**저장소 인증 오류 (계약 테스트 → fake → 어댑터)**
+- [x] 기존 `test_delete_failure_raises_storage_error`의 흉내 오류를 `AccessDenied` → `InternalError`(500)로 교체 (2026-10-14 승인)
+- [x] `test_delete_auth_failure_raises_storage_auth_error`: 계약(fake·moto)
+- [x] `test_s3_error_codes_map_to_auth_or_transient`: 어댑터. allowlist 코드와 `NoCredentialsError`·`PartialCredentialsError` → `StorageAuthError`, `RequestTimeout`·`InternalError` → `StorageError`
+
+**배치**
+- [x] `test_leftover_deleting_rows_are_retried`
+- [x] `test_pending_older_than_24h_with_valid_object_is_completed`: `uploaded_at` = 실행 시각
+- [x] `test_pending_older_than_24h_without_object_is_purged`
+- [x] `test_pending_younger_than_24h_is_untouched`: 1초 모자람
+- [x] `test_pending_older_than_24h_with_invalid_object_is_purged`: 같은 실행에서 REJECTED 단계로 삭제
+- [x] `test_pending_transient_storage_error_counts_as_failed`: 확인 중 일시 오류면 그 행만 `failed`, 배치는 계속 (2026-10-14 추가)
+- [x] `test_rejected_rows_are_purged`
+- [x] `test_soft_deleted_30_days_is_purged`
+- [x] `test_soft_deleted_just_under_30_days_is_kept`
+- [x] `test_uploaded_365_days_is_purged`
+- [x] `test_uploaded_just_under_365_days_is_kept`
+- [x] `test_purge_keeps_rows_deleting_when_s3_delete_fails`: 삭제 실패한 key의 행만 `DELETING`으로 남음
+- [x] `test_failed_purge_is_not_retried_in_same_run`
+- [x] `test_maintenance_reports_counts`: `processed`·`completed`·`purged`·`skipped`·`failed`·실행 후 `DELETING` 잔량, 불변식 `processed == completed + purged + skipped + failed`
+- [x] `test_concurrent_runs_do_not_double_process`: Postgres + 스레드 2개, `skip_locked`
+- [x] `test_maintenance_command_prints_counts_and_exits_zero_on_transient_failure`
+- [x] `test_maintenance_command_exits_nonzero_on_auth_error`
+- [x] Refactor 체크포인트
+- [ ] `test_auth_error_while_checking_pending_aborts_run`: PENDING 확인(`head`) 중 `StorageAuthError`도 중단. 현재는 일시 오류처럼 `failed`로 셈. fake `head`의 인증 오류 흉내가 필요해 계약 테스트부터 (2026-10-14 발견, 미착수)
 
 ### 1-11. `manage.py purge_attachment --id`
 
