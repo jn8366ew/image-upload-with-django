@@ -77,5 +77,6 @@ def store(request):
 
         gateway._client.delete_object = denied
         gateway._client.head_object = denied
+        gateway._client.get_object = denied
 
     return Store(gateway, put, BUCKET, fail_delete, break_auth, sent_ranges)

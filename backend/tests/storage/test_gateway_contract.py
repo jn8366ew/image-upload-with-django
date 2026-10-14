@@ -96,3 +96,11 @@ def test_head_auth_failure_raises_storage_auth_error(store):
 
     with pytest.raises(StorageAuthError):
         store.gateway.head(KEY)
+
+
+def test_read_prefix_auth_failure_raises_storage_auth_error(store):
+    store.put(KEY, b"\x89PNG\r\n\x1a\nbody", "image/png")
+    store.break_auth()
+
+    with pytest.raises(StorageAuthError):
+        store.gateway.read_prefix(KEY)

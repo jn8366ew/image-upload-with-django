@@ -41,6 +41,8 @@ class InMemoryStorageGateway:
         return self.objects[key][1]
 
     def read_prefix(self, key: str) -> bytes:
+        if self.auth_broken:
+            raise StorageAuthError(key)
         return self.objects[key][0][:8]
 
     def open(self, key: str) -> StoredObject:

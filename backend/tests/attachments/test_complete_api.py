@@ -90,3 +90,23 @@ def test_complete_response_has_no_s3_key_or_url(api, gateway, make_attachment):
 
     for leaked in (att.s3_key, gateway.bucket, "amazonaws.com", "attachments/"):
         assert leaked not in body
+
+
+@pytest.mark.parametrize("failing", ["head", "read_prefix"])
+def test_complete_storage_auth_error_returns_500(api, gateway, make_attachment, failing):
+    att = make_attachment()
+    gateway.put(att.s3_key, b"\x89PNG\r\n\x1a\nbody", "image/png")
+    real = getattr(gateway, failing)
+
+    def auth_failing(key):
+        gateway.auth_broken = True
+        return real(key)
+
+    setattr(gateway, failing, auth_failing)
+    api.raise_request_exception = False
+
+    response = api.post(complete_url(att.public_id))
+
+    assert response.status_code == 500
+    att.refresh_from_db()
+    assert att.status == Attachment.Status.PENDING

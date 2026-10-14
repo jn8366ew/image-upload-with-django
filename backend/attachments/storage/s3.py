@@ -66,7 +66,8 @@ class S3StorageGateway:
         return obj["ContentType"]
 
     def read_prefix(self, key: str) -> bytes:
-        obj = self._client.get_object(Bucket=self._bucket, Key=key, Range="bytes=0-7")
+        with _mapped_errors(key):
+            obj = self._client.get_object(Bucket=self._bucket, Key=key, Range="bytes=0-7")
         return obj["Body"].read()
 
     def open(self, key: str) -> StoredObject:

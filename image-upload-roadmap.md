@@ -190,6 +190,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_complete_file_shorter_than_signature_rejects`: 8바이트 미만 → `REJECTED`, 예외 없음
 - [x] `test_complete_reject_keeps_rejected_when_delete_fails`: 경고 로그, 400
 - [x] `test_complete_reject_logs_error_when_delete_auth_fails`: 400 유지, `REJECTED`, error 로그 (2026-10-14 추가, ADR-008 요청 경로 원칙)
+- [x] `test_read_prefix_auth_failure_raises_storage_auth_error`: storage 계약 테스트(fake·moto) (2026-10-14 추가)
+- [x] `test_complete_storage_auth_error_returns_500`: `head`·`read_prefix` 각각, 상태 `PENDING` 유지 (2026-10-14 추가, ADR-008 요청 경로 원칙)
 - [x] `test_complete_rejected_again_returns_400`
 - [x] `test_complete_is_idempotent`: 두 번째 호출 200, 같은 본문
 - [x] `test_complete_response_has_no_s3_key_or_url`: 보안 가드(ADR-010)
@@ -220,6 +222,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_download_sets_content_type_from_object`
 - [x] `test_download_sets_nosniff_and_no_store`
 - [x] `test_download_missing_object_returns_404_and_logs_warning`
+- [x] `test_download_storage_auth_error_returns_500` (2026-10-14 추가, ADR-008 요청 경로 원칙)
 - [x] `test_download_response_has_no_redirect_or_s3_url`: 3xx 아님, 헤더·본문에 S3 도메인 없음. 보안 가드(ADR-010)
 - [x] Refactor 체크포인트
 

@@ -98,6 +98,14 @@ def test_download_missing_object_returns_404_and_logs_warning(api, stored, gatew
     assert any(r.levelname == "WARNING" and str(att.public_id) in r.message for r in caplog.records)
 
 
+def test_download_storage_auth_error_returns_500(api, stored, gateway):
+    att = stored()
+    gateway.auth_broken = True
+    api.raise_request_exception = False
+
+    assert api.get(download_url(att.public_id)).status_code == 500
+
+
 def test_download_response_has_no_redirect_or_s3_url(api, stored, gateway):
     att = stored()
 
