@@ -32,6 +32,8 @@ class InMemoryStorageGateway:
         )
 
     def head(self, key: str) -> str:
+        if self.auth_broken:
+            raise StorageAuthError(key)
         if key in self.fail_head_for:
             raise StorageError(key)
         if key not in self.objects:

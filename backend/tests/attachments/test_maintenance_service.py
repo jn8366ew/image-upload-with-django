@@ -6,6 +6,7 @@ import pytest
 import time_machine
 from django.db import connection, transaction
 
+from attachments.exceptions import StorageAuthError
 from attachments.models import Attachment, AttachmentPurgeLog
 from attachments.services.maintenance import MaintenanceResult, run_maintenance
 
@@ -174,6 +175,16 @@ def test_pending_transient_storage_error_counts_as_failed(stored, gateway):
 
     assert Attachment.objects.get(pk=att.pk).status == Attachment.Status.COMPLETED
     assert retry.completed == 1
+
+
+def test_auth_error_while_checking_pending_aborts_run(stored, gateway):
+    att = pending_created_at(stored, NOW - timedelta(hours=25))
+    gateway.auth_broken = True
+
+    with pytest.raises(StorageAuthError):
+        run(gateway)
+
+    assert Attachment.objects.get(pk=att.pk).status == Attachment.Status.PENDING
 
 
 @contextmanager

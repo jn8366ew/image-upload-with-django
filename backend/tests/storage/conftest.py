@@ -73,8 +73,9 @@ def store(request):
         error = {"Error": {"Code": "AccessDenied", "Message": "denied"}}
 
         def denied(**_):
-            raise ClientError(error, "DeleteObject")
+            raise ClientError(error, "S3Operation")
 
         gateway._client.delete_object = denied
+        gateway._client.head_object = denied
 
     return Store(gateway, put, BUCKET, fail_delete, break_auth, sent_ranges)

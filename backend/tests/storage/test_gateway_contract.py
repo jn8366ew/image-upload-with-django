@@ -88,3 +88,11 @@ def test_delete_auth_failure_raises_storage_auth_error(store):
 
     with pytest.raises(StorageAuthError):
         store.gateway.delete(KEY)
+
+
+def test_head_auth_failure_raises_storage_auth_error(store):
+    store.put(KEY, b"data", "image/png")
+    store.break_auth()
+
+    with pytest.raises(StorageAuthError):
+        store.gateway.head(KEY)

@@ -277,7 +277,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_maintenance_command_prints_counts_and_exits_zero_on_transient_failure`
 - [x] `test_maintenance_command_exits_nonzero_on_auth_error`
 - [x] Refactor 체크포인트
-- [ ] `test_auth_error_while_checking_pending_aborts_run`: PENDING 확인(`head`) 중 `StorageAuthError`도 중단. 현재는 일시 오류처럼 `failed`로 셈. fake `head`의 인증 오류 흉내가 필요해 계약 테스트부터 (2026-10-14 발견, 미착수)
+- [x] `test_head_auth_failure_raises_storage_auth_error`: 계약(fake·moto) (2026-10-14 추가)
+- [x] `test_auth_error_while_checking_pending_aborts_run`: PENDING 확인(`head`) 중 `StorageAuthError`도 중단 (2026-10-14 발견)
 
 ### 1-11. `manage.py purge_attachment --id`
 

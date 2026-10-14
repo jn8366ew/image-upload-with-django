@@ -49,6 +49,8 @@ def run_maintenance(
             _purge_one(attachment.pk, gateway, counts)
         except UploadRejected:
             pass
+        except StorageAuthError:
+            raise
         except StorageError:
             counts["failed"] += 1
     _purge_all(Attachment.objects.filter(status=Attachment.Status.REJECTED), gateway, counts)
