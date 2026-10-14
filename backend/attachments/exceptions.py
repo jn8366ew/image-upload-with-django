@@ -37,3 +37,7 @@ class AttachmentNotFound(DomainError):
 
 class UploadNotReceived(DomainError):
     pass
+
+
+class OperatorNotAllowed(DomainError):
+    pass

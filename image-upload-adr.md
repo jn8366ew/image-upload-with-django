@@ -329,7 +329,7 @@ class AttachmentPurgeLog(models.Model):     # 하드 삭제 감사 로그, FK �
 | --- | --- | --- | --- |
 | 사용자(업로더 본인) | 소프트 삭제 | 앱 API | `deleted_at` 기록, 목록·다운로드에서 즉시 제외, S3 호출 없음 |
 | 시스템 | 하드 삭제 | 일일 배치 | 소프트 삭제 30일 경과, 업로드 1년 경과, `PENDING` 24h, `REJECTED` 정리 |
-| 인프라·개발자 | 하드 삭제 | `manage.py purge_attachment --id` | 즉시 하드 삭제, 감사 로그에 `requested_by_id` 기록 |
+| 인프라·개발자 | 하드 삭제 | `manage.py purge_attachment --public-id <uuid> --operator <username>` | 즉시 하드 삭제, 감사 로그에 `requested_by_id` 기록 |
 | 인프라(비상시) | 콘솔 직접 삭제 | break-glass IAM 역할 | DB는 그대로 → 다운로드 시 객체 없음으로 처리 |
 
 ### 삭제 API (2026-10-13 결정)
@@ -374,6 +374,21 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 - **멱등성:** `delete_object`는 없는 key에도 204를 돌려주므로, 재시도해도 안전합니다.
 - **배치 삭제:** 배치도 key마다 `delete_object`를 호출합니다. 실패한 key의 행만 `DELETING`으로 남고 다음 배치가 재시도합니다. (2026-10-12 결정: MVP 규모에서 `delete_objects` 묶음 삭제와 1,000개 분할은 불필요. DELETE 요청은 무료)
+
+**운영 명령 (2026-10-14 결정):** `manage.py purge_attachment --public-id <uuid> --operator <username>`
+
+- **식별자:** 운영자가 API·로그에서 보는 값은 `public_id`뿐이므로 `public_id`를 받고, 명령 안에서 pk로 바꿔 `purge()`를 호출합니다.
+- **식별자 형식:** `--public-id`는 argparse `type=uuid.UUID`로 받아, UUID가 아니면 사용법 오류(종료 코드 2)로 끝납니다.
+- **운영자:** `--operator`는 필수입니다. 없는 사용자나 `is_active=False` 사용자면 `purge()`를 호출하지 않고 실패합니다. 조회·검증은 서비스 `purge_by_operator(public_id, *, operator_username, gateway)`가 하고(`OperatorNotAllowed`·`AttachmentNotFound`), 명령은 예외를 `CommandError`로 바꿔 출력만 합니다. null은 시스템 삭제를 뜻하므로 운영 삭제에 null을 남기지 않습니다.
+- **대상:** 상태(`PENDING`·`REJECTED`·소프트 삭제 포함)를 가리지 않고 즉시 하드 삭제합니다. 확인 프롬프트는 두지 않습니다(UUID라 오타가 다른 첨부와 일치할 가능성이 매우 낮음).
+
+| 상황 | 종료 | 출력 |
+| --- | --- | --- |
+| `PURGED` | 0 | 삭제함 |
+| `ALREADY_GONE`(조회 뒤 다른 실행이 먼저 지움) | 0 | 이미 삭제됨 (`PURGED`와 구분) |
+| 없는 `public_id` | `CommandError` | `purge()` 호출 전 판정 |
+| `SKIPPED_LOCKED` | `CommandError` | 처리 중, 다시 시도 |
+| `StorageError`·`StorageAuthError` | `CommandError` | 행은 `DELETING`으로 남고 배치가 재시도 |
 
 ### 동시성
 

@@ -284,12 +284,20 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_head_auth_failure_raises_storage_auth_error`: 계약(fake·moto) (2026-10-14 추가)
 - [x] `test_auth_error_while_checking_pending_aborts_run`: PENDING 확인(`head`) 중 `StorageAuthError`도 중단 (2026-10-14 발견)
 
-### 1-11. `manage.py purge_attachment --id`
+### 1-11. `manage.py purge_attachment --public-id --operator`
 
-- [ ] `test_purge_command_hard_deletes_immediately`
-- [ ] `test_purge_command_records_operator`
-- [ ] `test_purge_command_unknown_id_fails_cleanly`
-- [ ] Refactor 체크포인트
+근거: ADR-005 "운영 명령" (2026-10-14 결정).
+
+- [x] `test_purge_command_hard_deletes_immediately`: 행·객체 삭제, 종료 0, "삭제함" 출력
+- [x] `test_purge_command_records_operator`: 감사 로그 `requested_by_id` = 운영자 pk
+- [x] `test_purge_command_unknown_id_fails_cleanly`: `CommandError`, 다른 행 그대로
+- [x] `test_purge_command_unknown_operator_fails`: `CommandError`, 대상 행 상태 유지·로그 없음
+- [x] `test_purge_command_inactive_operator_fails`: `is_active=False` → `CommandError`, 대상 행 유지
+- [x] `test_purge_command_storage_failure_exits_nonzero_and_keeps_deleting`
+- [x] `test_purge_command_skipped_locked_fails_with_retry_message`: `purge()` monkeypatch로 `SKIPPED_LOCKED`(잠금 자체는 1-9에서 검증)
+- [x] `test_purge_command_already_gone_exits_zero`: `purge()` monkeypatch로 `ALREADY_GONE`, "이미 삭제됨" 출력
+- [x] `test_purge_command_invalid_public_id_is_usage_error`: UUID 아닌 값 → argparse 사용법 오류, `purge()` 호출 전 (2026-10-14 추가)
+- [x] Refactor 체크포인트
 
 **Phase 1-B 게이트:** 백엔드 테스트 전부 green, diff-cover 100%, views에 비즈니스 분기 없음
 

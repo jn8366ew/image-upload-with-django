@@ -1,7 +1,10 @@
 from enum import Enum
+from uuid import UUID
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from attachments.exceptions import AttachmentNotFound, OperatorNotAllowed
 from attachments.models import Attachment, AttachmentPurgeLog
 from attachments.storage.gateway import StorageGateway
 
@@ -28,6 +31,18 @@ def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> 
     gateway.delete(attachment.s3_key)
     deleted, _ = Attachment.objects.filter(pk=attachment_id).delete()
     return PurgeOutcome.PURGED if deleted == 1 else PurgeOutcome.ALREADY_GONE
+
+
+def purge_by_operator(
+    public_id: UUID, *, operator_username: str, gateway: StorageGateway
+) -> PurgeOutcome:
+    operator = get_user_model().objects.filter(username=operator_username, is_active=True).first()
+    if operator is None:
+        raise OperatorNotAllowed(operator_username)
+    attachment = Attachment.objects.filter(public_id=public_id).first()
+    if attachment is None:
+        raise AttachmentNotFound(public_id)
+    return purge(attachment.pk, gateway=gateway, requested_by=operator)
 
 
 def _start_purge(attachment: Attachment, requested_by) -> None:
