@@ -41,14 +41,20 @@ def complete_upload(
         return attachment
     if attachment.status == Attachment.Status.REJECTED:
         raise UploadRejected("invalid_format")
+    return finalize_pending(attachment, gateway=gateway, now=now())
+
+
+def finalize_pending(
+    attachment: Attachment, *, gateway: StorageGateway, now: datetime
+) -> Attachment:
     try:
         declared = gateway.head(attachment.s3_key)
     except ObjectNotFound as e:
-        raise UploadNotReceived(public_id) from e
+        raise UploadNotReceived(attachment.public_id) from e
     if not gateway.read_prefix(attachment.s3_key).startswith(SIGNATURES[declared]):
         _reject(attachment, gateway)
     attachment.status = Attachment.Status.COMPLETED
-    attachment.uploaded_at = now()
+    attachment.uploaded_at = now
     attachment.save(update_fields=["status", "uploaded_at"])
     return attachment
 
