@@ -550,6 +550,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 **`StorageAuthError` (2026-10-14 결정):** `StorageError`의 하위 예외로, "재시도해도 해결되지 않는 인증·권한·설정 오류"입니다. 어댑터는 HTTP 상태가 아니라 오류 코드 allowlist로 분류합니다(S3 공식 Error Responses 문서 기준, 사용자 확인).
 - 대상: `AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`, `RequestTimeTooSkewed`, `InvalidSecurity`, `AccountProblem`, `ExpiredToken`, `InvalidToken`, `TokenRefreshRequired`, `NoSuchBucket`, botocore `NoCredentialsError`·`PartialCredentialsError`
 - 그 밖의 오류는 일시 오류(`StorageError`)입니다. 예: `RequestTimeout`은 400이지만 일시 오류입니다.
+- **요청 경로 원칙 (2026-10-14 결정):** `StorageAuthError`가 요청의 본래 결과를 바꾸면 500입니다. 뒷정리에서만 났으면 결과는 그대로 두고 error 로그를 남깁니다. 예: `/complete`의 `head`·`read_prefix`, 다운로드의 `open`은 500이고, 거절된 업로드의 객체 삭제(`_reject`)는 400 `invalid_format`을 유지하면서 error 로그를 남깁니다(일시 오류는 warning).
 
 ### 고려한 대안
 

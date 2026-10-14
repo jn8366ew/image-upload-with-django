@@ -84,3 +84,22 @@ def test_complete_reject_keeps_rejected_when_delete_fails(user, gateway, make_at
     att.refresh_from_db()
     assert att.status == Attachment.Status.REJECTED
     assert any(r.levelname == "WARNING" and str(att.public_id) in r.message for r in caplog.records)
+
+
+def test_complete_reject_logs_error_when_delete_auth_fails(user, gateway, make_attachment, caplog):
+    att = make_attachment()
+    gateway.put(att.s3_key, b"not-an-image", "image/png")
+    real_delete = gateway.delete
+
+    def auth_failing_delete(key):
+        gateway.auth_broken = True
+        real_delete(key)
+
+    gateway.delete = auth_failing_delete
+
+    with pytest.raises(UploadRejected):
+        complete_upload(user, att.public_id, gateway=gateway)
+
+    att.refresh_from_db()
+    assert att.status == Attachment.Status.REJECTED
+    assert any(r.levelname == "ERROR" and str(att.public_id) in r.message for r in caplog.records)

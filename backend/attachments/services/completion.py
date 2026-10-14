@@ -9,6 +9,7 @@ from attachments.exceptions import (
     AttachmentNotFound,
     NotOwner,
     ObjectNotFound,
+    StorageAuthError,
     StorageError,
     UploadNotReceived,
     UploadRejected,
@@ -64,6 +65,8 @@ def _reject(attachment: Attachment, gateway: StorageGateway) -> None:
     attachment.save(update_fields=["status"])
     try:
         gateway.delete(attachment.s3_key)
+    except StorageAuthError:
+        logger.error("rejected upload %s: object delete auth failed", attachment.public_id)
     except StorageError:
         logger.warning("rejected upload %s: object delete failed", attachment.public_id)
     raise UploadRejected("invalid_format")

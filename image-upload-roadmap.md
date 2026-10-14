@@ -189,6 +189,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_complete_signature_must_match_declared_type`: PNG 선언 + JPEG 바이트 → `REJECTED`
 - [x] `test_complete_file_shorter_than_signature_rejects`: 8바이트 미만 → `REJECTED`, 예외 없음
 - [x] `test_complete_reject_keeps_rejected_when_delete_fails`: 경고 로그, 400
+- [x] `test_complete_reject_logs_error_when_delete_auth_fails`: 400 유지, `REJECTED`, error 로그 (2026-10-14 추가, ADR-008 요청 경로 원칙)
 - [x] `test_complete_rejected_again_returns_400`
 - [x] `test_complete_is_idempotent`: 두 번째 호출 200, 같은 본문
 - [x] `test_complete_response_has_no_s3_key_or_url`: 보안 가드(ADR-010)
