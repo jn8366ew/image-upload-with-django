@@ -57,18 +57,10 @@ jobs:
         run: uv run python manage.py check
       - name: Tests
         run: uv run pytest --cov --cov-report=xml
-      # 변경된 비즈니스 로직 라인 커버리지 100% (ADR-010). prod가 생긴 뒤부터 동작.
+      # 비교 기준(Phase 시작 태그)·범위·기준치는 pyproject.toml [tool.diff_cover] (ADR-010)
       - name: Diff coverage
-        if: github.event_name == 'pull_request'
-        run: |
-          if git rev-parse --verify --quiet origin/prod >/dev/null; then
-            uv run diff-cover coverage.xml --compare-branch=origin/prod --fail-under=100 \
-              --include "*attachments/services/*" "*attachments/selectors/*" \
-                        "*attachments/storage/*" "*attachments/events/*" \
-                        "*attachments/management/commands/*"
-          else
-            echo "origin/prod 없음: diff-cover 건너뜀"
-          fi
+        working-directory: .
+        run: uv run --project backend diff-cover backend/coverage.xml -c backend/pyproject.toml
 
   frontend:
     runs-on: ubuntu-latest
@@ -88,16 +80,12 @@ jobs:
       - run: npm run lint
       - run: npx tsc -b
       - run: npm run coverage
-      # src/upload/ 변경 라인 커버리지 100% (ADR-010)
+      # src/upload/ 변경 라인 커버리지 100%, 비교 기준은 Phase 시작 태그 (ADR-010)
       - name: Diff coverage
-        if: github.event_name == 'pull_request'
+        working-directory: .
         run: |
-          if git rev-parse --verify --quiet origin/prod >/dev/null; then
-            pipx run diff-cover coverage/cobertura-coverage.xml --compare-branch=origin/prod \
-              --fail-under=100 --include "*src/upload/*"
-          else
-            echo "origin/prod 없음: diff-cover 건너뜀"
-          fi
+          pipx run diff-cover frontend/coverage/cobertura-coverage.xml --compare-branch=gate/1b-start \
+            --fail-under=100 --include "frontend/src/upload/**/*.ts" "frontend/src/upload/**/*.tsx"
 
   infra:
     runs-on: ubuntu-latest

@@ -675,9 +675,11 @@ AWS 리소스는 Terraform으로 정의합니다. 기능 개발에 필요한 S3�
 ### 강제 장치 (CI 게이트)
 
 - **백엔드:**
-  - `diff-cover`로 PR에서 변경된 비즈니스 로직 라인의 커버리지가 100%가 아니면 실패시킵니다.
-  - 대상 디렉터리: `services/`, `management/commands/`, `storage/`, `events/`
-- **프론트:** Vitest 커버리지로 `src/upload/` 하위의 변경 라인에 같은 기준을 적용합니다.
+  - `diff-cover`로 변경된 비즈니스 로직 라인의 커버리지가 100%가 아니면 실패시킵니다. push·PR 모두 실행합니다.
+  - 대상: `services/`, `selectors/`, `management/commands/`, `storage/`, `events/`, `exception_handler.py`. 범위·기준치·비교 기준은 `backend/pyproject.toml` `[tool.diff_cover]` 한 곳에 둡니다.
+  - **비교 기준 (2026-10-15 결정):** `prod`에 직접 push하므로 `origin/prod`와 비교하면 diff가 비어 게이트가 돌지 않습니다(1-B 동안 실제로 한 번도 실행되지 않음). 대신 Phase 시작 직전 커밋에 고정 태그(`gate/1b-start` = `5af8d74`)를 두고 그 태그와 비교해, Phase 전체가 매번 검사 범위에 들어가게 합니다. `github.event.before`는 force-push·새 브랜치에서 `0000000`이 되어 쓰지 않습니다. Phase가 바뀌면 새 태그를 만들고 `compare_branch`와 프론트 스텝의 태그를 교체합니다.
+  - **실행 위치:** diff-cover 10.6의 `include`는 실행 디렉터리 기준 `glob` 결과를 git 경로(`backend/...`)와 비교합니다. `backend/`에서 실행하면 아무 파일도 맞지 않아 "No lines"로 늘 통과하므로, 저장소 루트에서 실행하고 패턴도 루트 기준으로 씁니다. 1-B 소급 검사(2026-10-15, `5af8d74...HEAD`): 비즈니스 로직 363줄, 누락 0, 100%.
+- **프론트:** Vitest 커버리지로 `src/upload/` 하위의 변경 라인에 같은 기준을 적용합니다(같은 태그와 비교).
 - **PR 체크리스트:**
   - "추가된 비즈니스 로직마다 먼저 실패한 테스트가 있는가"
   - "Refactor 커밋이 동작을 바꾸지 않았는가"
