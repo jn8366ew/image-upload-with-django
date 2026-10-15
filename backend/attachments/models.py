@@ -68,3 +68,35 @@ class AttachmentPurgeLog(models.Model):
 
     def __str__(self) -> str:
         return str(self.attachment_public_id)
+
+
+class EventOutbox(models.Model):
+    class Type(models.TextChoices):
+        UPLOAD_COMPLETED = "UPLOAD_COMPLETED"
+        UPLOAD_REJECTED = "UPLOAD_REJECTED"
+        DOWNLOADED = "DOWNLOADED"
+        SOFT_DELETED = "SOFT_DELETED"
+        PURGED = "PURGED"
+
+    event_id = models.UUIDField(default=uuid4, unique=True, editable=False)
+    type = models.CharField(max_length=32, choices=Type.choices)
+    payload = models.JSONField()
+    occurred_at = models.DateTimeField()
+    published_at = models.DateTimeField(null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["id"],
+                name="outbox_unpublished_idx",
+                condition=Q(published_at__isnull=True),
+            ),
+            models.Index(
+                fields=["published_at"],
+                name="outbox_published_idx",
+                condition=Q(published_at__isnull=False),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.type} {self.event_id}"
