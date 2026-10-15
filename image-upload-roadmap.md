@@ -309,13 +309,16 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-18. 클라이언트 IP 추출
 
-- [ ] `test_client_ip_uses_remote_addr_when_no_trusted_proxy`
-- [ ] `test_client_ip_counts_trusted_hops_from_right`
-- [ ] `test_client_ip_ignores_spoofed_leftmost_xff`
-- [ ] `test_client_ip_with_fewer_xff_entries_than_hops_falls_back_safely`
-- [ ] `test_client_ip_invalid_value_becomes_null`
-- [ ] `test_client_ip_supports_ipv6`
-- [ ] Refactor 체크포인트
+근거: ADR-013 "클라이언트 IP 추출" (2026-10-15 결정).
+
+- [x] `test_client_ip_uses_remote_addr_when_no_trusted_proxy`
+- [x] `test_client_ip_counts_trusted_hops_from_right`: hops=2, `"9.9.9.9, 203.0.113.7, 70.1.1.1"` → `"203.0.113.7"` (오른쪽에서 hops번째)
+- [x] `test_client_ip_ignores_spoofed_leftmost_xff`: 보안 가드(ADR-010)
+- [x] `test_client_ip_with_fewer_xff_entries_than_hops_falls_back_safely`: 항목 부족·헤더 없음 → `None`
+- [x] `test_client_ip_invalid_value_becomes_null`: 쓰레기 값, 포트 포함 값, hops=0의 잘못된 `REMOTE_ADDR`
+- [x] `test_client_ip_strips_whitespace_around_entries` (2026-10-15 추가)
+- [x] `test_client_ip_supports_ipv6`: 압축형 정규화
+- [x] Refactor 체크포인트
 
 ### 1-19. 아웃박스 기록 (같은 트랜잭션)
 

@@ -50,6 +50,7 @@ include = [
     "backend/attachments/events/**/*.py",
     "backend/attachments/management/commands/**/*.py",
     "backend/attachments/exception_handler.py",
+    "backend/attachments/client_ip.py",
 ]
 
 [tool.ruff]
