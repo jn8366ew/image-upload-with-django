@@ -353,6 +353,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null
 - [ ] Refactor 체크포인트
 
+릴레이 쿼리에 `EXPLAIN`을 한 번 실행해 `outbox_unpublished_idx`가 쓰이는지 확인하고, 결과를 ADR-013에 기록합니다(테스트 아님, 2026-10-15 결정).
+
 ### 1-22. 아웃박스 정리 (`attachment_maintenance`에 추가)
 
 - [ ] `test_published_outbox_rows_older_than_7_days_are_deleted`

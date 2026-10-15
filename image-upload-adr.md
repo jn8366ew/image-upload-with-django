@@ -854,9 +854,9 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 ```python
 class EventOutbox(models.Model):
     event_id = models.UUIDField(default=uuid4, unique=True)   # MongoDB 멱등 키
-    type = models.CharField(max_length=32)
+    type = models.CharField(max_length=32, choices=Type.choices)  # TextChoices 5종, DB 제약 없음
     payload = models.JSONField()                               # MongoDB 문서 본문
-    occurred_at = models.DateTimeField(auto_now_add=True)      # UTC
+    occurred_at = models.DateTimeField()                       # UTC, record_event(now=...)로 받음
     published_at = models.DateTimeField(null=True)
 
     class Meta:
@@ -867,6 +867,9 @@ class EventOutbox(models.Model):
                          condition=Q(published_at__isnull=False)),
         ]
 ```
+
+- `outbox_unpublished_idx`: 릴레이 쿼리(`WHERE published_at IS NULL ORDER BY id LIMIT 100`)는 PK 스캔과 필터만으로도 충분합니다. 이 partial index는 미발행 행이 적을 때 스캔 범위를 줄이는 보조 수단입니다. 실제로 쓰이는지는 1-21에서 `EXPLAIN`으로 한 번 확인합니다.
+- `outbox_published_idx`: 1-22의 정리 쿼리(`published_at < now - 7일`)가 이 인덱스를 범위 조건으로 씁니다.
 
 ### MongoDB `attachment_events`
 
@@ -889,6 +892,8 @@ class EventOutbox(models.Model):
 | `{user_id: 1, occurred_at: -1}` | 사용자별 조회, 통계 |
 | `{attachment_public_id: 1, occurred_at: -1}` | 파일별 접근 이력(보안 조사) |
 | `{occurred_at: 1}` TTL 400일 | 자동 만료. 첨부 보존 1년보다 길게 잡아, 삭제된 파일의 이력도 추적 가능 |
+
+이벤트 문서에는 `s3_key`와 파일명을 넣지 않습니다. 하드 삭제된 첨부가 어떤 파일이었는지는 `attachment_public_id`로 Postgres `AttachmentPurgeLog`(ADR-005)를 조회해 확인합니다.
 
 TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로, 만료 시각보다 늦게 지워질 수 있습니다.
 

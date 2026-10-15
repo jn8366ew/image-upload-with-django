@@ -54,15 +54,18 @@ def finalize_pending(
         raise UploadNotReceived(attachment.public_id) from e
     if not gateway.read_prefix(attachment.s3_key).startswith(SIGNATURES[declared]):
         _reject(attachment, gateway)
-    attachment.status = Attachment.Status.COMPLETED
-    attachment.uploaded_at = now
-    attachment.save(update_fields=["status", "uploaded_at"])
+    _pending(attachment).update(status=Attachment.Status.COMPLETED, uploaded_at=now)
+    attachment.refresh_from_db()
     return attachment
 
 
+def _pending(attachment: Attachment):
+    return Attachment.objects.filter(pk=attachment.pk, status=Attachment.Status.PENDING)
+
+
 def _reject(attachment: Attachment, gateway: StorageGateway) -> None:
-    attachment.status = Attachment.Status.REJECTED
-    attachment.save(update_fields=["status"])
+    _pending(attachment).update(status=Attachment.Status.REJECTED)
+    attachment.refresh_from_db()
     try:
         gateway.delete(attachment.s3_key)
     except StorageAuthError:
