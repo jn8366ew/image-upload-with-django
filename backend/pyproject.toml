@@ -42,7 +42,7 @@ omit = ["*/migrations/*"]
 
 # include는 실행 디렉터리 기준 glob 결과를 git 경로와 비교하므로 저장소 루트에서 실행해야 맞는다
 [tool.diff_cover]
-compare_branch = "gate/1b-start"
+compare_branch = "gate/1f-start"
 fail_under = 100
 include = [
     "backend/attachments/services/**/*.py",

@@ -118,7 +118,7 @@ jobs:
       - name: Diff coverage
         working-directory: .
         run: |
-          pipx run diff-cover frontend/coverage/cobertura-coverage.xml --compare-branch=gate/1b-start \
+          pipx run diff-cover frontend/coverage/cobertura-coverage.xml --compare-branch=gate/1f-start \
             --fail-under=100 --include "frontend/src/upload/**/*.ts" "frontend/src/upload/**/*.tsx"
 
   infra:
