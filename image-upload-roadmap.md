@@ -438,17 +438,21 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 - [x] `rejects file over size limit`: 2,621,440바이트는 통과, 1바이트 초과는 `too_large`(ADR-002)
 - [x] `rejects disallowed mime type and accepts png and jpeg`: 통과 단언을 함께 둡니다. 따로 두면 처음부터 통과해 Red가 나올 수 없습니다(2026-10-16). presign 미호출은 1-16에서 단언합니다
+- [x] `rejects filename over 255 code points or with control characters`: 서버 규칙(1-4 serializer)과 같게. Python `len`은 코드 포인트, JS `.length`는 UTF-16 단위라 이모지로 경계를 단언합니다. presign 400은 배치 전체를 막으므로 사전에 거릅니다 (2026-10-16 추가). `String.length` 변이로 255 경계 Red 확인
 - [x] Refactor 체크포인트: 변경 없음
 
 ### 1-14. 업로드 큐 reducer (`useReducer`)
 
 - [x] `queued → presigning → uploading → confirming → done`
 - [x] `progress event updates only the target file`
-- [ ] `403 clears presign and retries`
+- [x] `403 clears presign and retries`: `backoff`로 가고(즉시 재발급 아님) presign을 비움. 정책 위반 403의 연속 요청 방지
 - [ ] `400 moves to fatal failed`
 - [ ] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
 - [ ] `network error retries with backoff up to 4 times`
 - [ ] `exhausted retries move to retryable failed`
+- [ ] `api 403 on presign or complete moves to fatal failed`: 세션·CSRF 문제 (2026-10-16 추가)
+- [ ] `backoff resumes at failed stage`: 403 → `queued`, 업로드 5xx → `uploading`, complete 5xx → `confirming` (2026-10-16 추가)
+- [ ] `unclassified 4xx moves to fatal failed, 429 to retryable` (2026-10-16 추가)
 - [ ] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
 - [ ] `cancel moves uploading file to cancelled`
 - [ ] Refactor 체크포인트

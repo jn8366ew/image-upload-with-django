@@ -1,4 +1,4 @@
-export type Status = 'queued' | 'presigning' | 'uploading' | 'confirming' | 'done'
+export type Status = 'queued' | 'presigning' | 'uploading' | 'confirming' | 'backoff' | 'done'
 
 export type Presign = { publicId: string; url: string; fields: Record<string, string> }
 
@@ -7,6 +7,7 @@ export type Entry = {
   file: File
   status: Status
   loaded: number
+  attempt: number
   presign?: Presign
 }
 
@@ -19,6 +20,7 @@ export type QueueAction =
   | { type: 'progress'; clientRef: string; loaded: number }
   | { type: 'uploaded'; clientRef: string }
   | { type: 'completed'; clientRef: string }
+  | { type: 'failed'; clientRef: string; stage: 'presign' | 'upload' | 'complete'; status?: number }
 
 function update(state: QueueState, clientRef: string, patch: Partial<Entry>): QueueState {
   return state.map((e) => (e.clientRef === clientRef ? { ...e, ...patch } : e))
@@ -27,7 +29,7 @@ function update(state: QueueState, clientRef: string, patch: Partial<Entry>): Qu
 export function queueReducer(state: QueueState, action: QueueAction): QueueState {
   switch (action.type) {
     case 'added':
-      return [...state, ...action.files.map((f) => ({ ...f, status: 'queued' as const, loaded: 0 }))]
+      return [...state, ...action.files.map((f) => ({ ...f, status: 'queued' as const, loaded: 0, attempt: 0 }))]
     case 'presign_started':
       return state.map((e) =>
         action.clientRefs.includes(e.clientRef) ? { ...e, status: 'presigning' } : e,
@@ -40,5 +42,11 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return update(state, action.clientRef, { status: 'confirming' })
     case 'completed':
       return update(state, action.clientRef, { status: 'done' })
+    case 'failed':
+      return state.map((e) =>
+        e.clientRef === action.clientRef
+          ? { ...e, status: 'backoff', attempt: e.attempt + 1, presign: undefined }
+          : e,
+      )
   }
 }

@@ -44,4 +44,23 @@ describe('queueReducer', () => {
 
     expect(state.map((e) => e.loaded)).toEqual([100, 0])
   })
+
+  it('403 clears presign and retries', () => {
+    let state: QueueState = queueReducer([], {
+      type: 'added',
+      files: [
+        { clientRef: 'c1', file },
+        { clientRef: 'c2', file },
+      ],
+    })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1', 'c2'] })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c2', presign })
+    const before = state[1]
+
+    state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'upload', status: 403 })
+
+    expect(state[0]).toMatchObject({ status: 'backoff', attempt: 1, presign: undefined })
+    expect(state[1]).toBe(before)
+  })
 })

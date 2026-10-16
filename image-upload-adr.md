@@ -118,6 +118,10 @@ sequenceDiagram
     | S3 업로드 | backoff 후 재업로드 | fatal | presign 재발급 | — |
     | complete | backoff 후 complete만 재시도 | fatal(`invalid_format`) | fatal | retryable failed(사용자 "다시 시도"로 `queued` 복귀, presign부터). 원인을 알 수 없어 자동 재업로드하지 않음(ADR-003) |
 
+    표에 없는 status: 429(presign 시간당 한도)는 retryable failed, 404·그 밖의 4xx는 fatal입니다(모르는 오류를 자동 반복하지 않음). presign 400은 배치 전체가 거절되므로(위 presign 배치 결정), 프론트 사전 검증이 서버 규칙(개수·MIME·크기·파일명)을 모두 미리 거릅니다. 그래도 400이 오면 그 배치의 파일이 전부 fatal입니다.
+
+  - **`backoff` 상태 (2026-10-16):** 403을 포함한 모든 자동 재시도는 `backoff`를 거칩니다. 정책 위반 403도 재발급 경로를 타므로, 즉시 재시도하면 S3에 연속 요청을 보내기 때문입니다. 대기가 끝나면 실패한 단계로 돌아갑니다: 403은 presign을 비우고 `queued`(배치 presign 입구), 업로드 5xx는 `uploading`, complete 5xx는 `confirming`.
+  - **네트워크 오류:** 응답 status가 없거나 0이면 네트워크 오류로 봅니다(XHR timeout 포함).
   - **사용자 "다시 시도":** retryable failed인 파일만 `queued`로 되돌리고 시도 횟수를 0으로 초기화합니다.
 - **업로드 HTTP는 XHR 기반(axios `onUploadProgress`)을 씁니다.** 진행률이 필요하기 때문입니다.
 - **boto3 클라이언트는 `region_name`, `signature_version="s3v4"`, `s3={"addressing_style": "virtual"}`을 명시합니다.** 빠지면 presigned POST URL이 전역 엔드포인트(`<bucket>.s3.amazonaws.com`)로 생성되고, S3가 307 리다이렉트를 돌려주며, 브라우저가 CORS 요청에서 이를 따라가지 못해 업로드가 깨집니다.
