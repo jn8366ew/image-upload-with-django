@@ -436,9 +436,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-13. 사전 검증
 
-- [ ] `rejects file over size limit without calling presign`
-- [ ] `rejects disallowed mime type without calling presign`
-- [ ] `accepts png and jpeg within limit`
+- [x] `rejects file over size limit`: 2,621,440바이트는 통과, 1바이트 초과는 `too_large`(ADR-002)
+- [x] `rejects disallowed mime type and accepts png and jpeg`: 통과 단언을 함께 둡니다. 따로 두면 처음부터 통과해 Red가 나올 수 없습니다(2026-10-16). presign 미호출은 1-16에서 단언합니다
 - [ ] Refactor 체크포인트
 
 ### 1-14. 업로드 큐 reducer (`useReducer`)
@@ -465,7 +464,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `selecting files shows per-file progress and done state`
 - [ ] `retry failed only resends failed files`
 - [ ] `cancel aborts in-flight uploads`
-- [ ] `oversized file shows guidance message`
+- [ ] `oversized file shows guidance message`: 사전 검증 거부 시 presign 호출 0회 단언 포함(1-13 단위 테스트는 거부 판정만 보장)
 - [ ] Refactor 체크포인트
 
 ### 1-17. 내 목록·다운로드·삭제
