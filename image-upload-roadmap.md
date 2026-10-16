@@ -438,17 +438,18 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 - [x] `rejects file over size limit`: 2,621,440바이트는 통과, 1바이트 초과는 `too_large`(ADR-002)
 - [x] `rejects disallowed mime type and accepts png and jpeg`: 통과 단언을 함께 둡니다. 따로 두면 처음부터 통과해 Red가 나올 수 없습니다(2026-10-16). presign 미호출은 1-16에서 단언합니다
-- [ ] Refactor 체크포인트
+- [x] Refactor 체크포인트: 변경 없음
 
 ### 1-14. 업로드 큐 reducer (`useReducer`)
 
-- [ ] `queued → presigning → uploading → confirming → done`
-- [ ] `progress event updates only the target file`
+- [x] `queued → presigning → uploading → confirming → done`
+- [x] `progress event updates only the target file`
 - [ ] `403 clears presign and retries`
 - [ ] `400 moves to fatal failed`
 - [ ] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
 - [ ] `network error retries with backoff up to 4 times`
 - [ ] `exhausted retries move to retryable failed`
+- [ ] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
 - [ ] `cancel moves uploading file to cancelled`
 - [ ] Refactor 체크포인트
 

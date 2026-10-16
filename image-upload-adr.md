@@ -108,6 +108,17 @@ sequenceDiagram
   - 403 → presign 재발급 후 재시도
   - 400 → 중단(정책 위반)
   - 5xx·네트워크 오류 → 지수 backoff + jitter, 최대 4회
+  - **횟수 (2026-10-16 결정):** 재시도 4회, 총 5회 시도입니다. 403 재발급과 5xx·네트워크 재시도를 파일당 하나의 횟수로 합산하고, 다 쓰면 retryable failed입니다. S3는 정책 위반(Content-Type 불일치)에도 403을 주므로 상한이 없으면 재발급을 무한히 반복합니다(0-3 `test_s3_rejects_mismatched_content_type`).
+  - **backoff:** 기준 1초, 2배씩 증가, full jitter(`random × 1000 × 2^(n-1)`ms, 4번째 최대 8초). reducer 밖 순수 함수로 계산하고, reducer는 시도 횟수와 `backoff` 상태만 다룹니다.
+  - **단계별 적용:**
+
+    | 단계 | 5xx·네트워크 | 400 | 403 | 409 |
+    | --- | --- | --- | --- | --- |
+    | presign | backoff 후 presign만 재시도 | fatal(규칙 위반) | fatal(세션·CSRF) | — |
+    | S3 업로드 | backoff 후 재업로드 | fatal | presign 재발급 | — |
+    | complete | backoff 후 complete만 재시도 | fatal(`invalid_format`) | fatal | retryable failed(사용자 "다시 시도"로 `queued` 복귀, presign부터). 원인을 알 수 없어 자동 재업로드하지 않음(ADR-003) |
+
+  - **사용자 "다시 시도":** retryable failed인 파일만 `queued`로 되돌리고 시도 횟수를 0으로 초기화합니다.
 - **업로드 HTTP는 XHR 기반(axios `onUploadProgress`)을 씁니다.** 진행률이 필요하기 때문입니다.
 - **boto3 클라이언트는 `region_name`, `signature_version="s3v4"`, `s3={"addressing_style": "virtual"}`을 명시합니다.** 빠지면 presigned POST URL이 전역 엔드포인트(`<bucket>.s3.amazonaws.com`)로 생성되고, S3가 307 리다이렉트를 돌려주며, 브라우저가 CORS 요청에서 이를 따라가지 못해 업로드가 깨집니다.
   - 0-3 spike(2026-10-12, botocore 1.43.111): region과 s3v4만 지정해도 URL이 전역 엔드포인트로 나와 307이 났습니다. `addressing_style="virtual"`을 더하면 `<bucket>.s3.ap-northeast-2.amazonaws.com`이 나오고 204로 성공했습니다.
@@ -1144,6 +1155,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 
 - [x] 크기 상한의 정확한 값: **2,621,440바이트(2.5MiB)**로 확정(2026-10-12). 2,621,440바이트 이하만 허용합니다. 프론트와 S3 조건에 같은 값을 씁니다.
 - [x] presign 한도: 요청당 최대 10개, 사용자별 60회/시간으로 확정(2026-10-13). ADR-001·006 반영.
+- [ ] S3 403 원인 구분: 응답 XML의 `<Message>`로 만료(`Policy expired`)와 정책 위반(`Policy Condition failed`)을 나눠 후자를 첫 403에서 fatal로 보낼지. MVP는 횟수 상한만 둡니다. 근거 본문은 0-3 `test_s3_rejects_expired_post`, `test_s3_rejects_mismatched_content_type`가 단언합니다.
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지
 - [ ] 로그인 성공·실패도 보안 이벤트로 기록할지
