@@ -342,8 +342,11 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_creates_unique_event_id_index`
 - [ ] `test_creates_ttl_index_400_days_on_occurred_at`
 - [ ] `test_creates_user_and_attachment_lookup_indexes`
-- [ ] `test_ensure_indexes_is_idempotent`
 - [ ] Refactor 체크포인트
+
+- **인덱스 정의:** 인덱스 4개(`event_id_unique`, `user_occurred_at`, `attachment_occurred_at`, `occurred_at_ttl`)는 `attachments/events/indexes.py`의 상수 하나로 두고, `ensure_indexes`와 테스트가 함께 씁니다.
+- **멱등 테스트 삭제:** `create_index`가 원래 멱등이라 Red가 나올 수 없어서 `test_ensure_indexes_is_idempotent`를 뺐습니다. 정의가 충돌하면(같은 이름, 다른 옵션) 오류로 실패시키고, 실제 변경은 수동 `collMod`로 합니다(2026-10-16 결정).
+- **테스트 격리:** 테스트는 `test_` 접두어 DB만 씁니다. 1-20 인덱스 테스트는 함수마다 DB를 drop합니다. 1-21부터는 세션 시작 때 한 번 drop하고 `ensure_indexes`를 실행한 뒤, 함수마다 `delete_many({})`로 문서만 비웁니다. 접두어 안전장치는 양쪽에 둡니다.
 
 ### 1-21. 릴레이 (`manage.py relay_events`, 실제 MongoDB)
 
@@ -353,7 +356,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_relay_keeps_rows_unpublished_when_mongo_down`
 - [ ] `test_relay_respects_batch_size`
 - [ ] `test_concurrent_relays_do_not_select_same_rows`: `skip_locked`
-- [ ] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null
+- [ ] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null, `event_id`는 str (2026-10-16 결정)
 - [ ] relay 모듈을 만든 직후 확인: 모듈 경로가 import 계약 "request path never imports relay"의 `attachments.events.relay`와 글자까지 같은지 보고, 변이(services에서 import)로 BROKEN을 다시 확인합니다. 금지 대상 모듈이 없으면 계약이 KEPT로 통과하기 때문입니다(2026-10-15 실측).
 - [ ] Refactor 체크포인트
 
@@ -380,7 +383,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - **views에 pymongo 간접 금지 걸기:** 지금은 `views.py`가 단일 모듈이라 views에 이 계약을 걸 수 없습니다. 걸면 stats view까지 막힙니다. views를 패키지로 나누면(`views/attachments.py`, `views/stats.py`) stats만 빼고 나머지 views에 계약을 걸 수 있습니다. 1-23 시작 시 결정합니다(2026-10-15 메모).
 
 **Phase 1-E 게이트:**
-- MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리).
+- MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리). 실행 명령은 `uv run pytest -m "not s3 and not mongo"`입니다. CI에 별도 job을 둘지는 1-E를 마무리할 때 검토합니다.
 - MongoDB를 다시 띄우고 릴레이를 돌리면, 멈춘 동안 쌓인 이벤트가 누락 없이 적재됩니다.
 
 ---

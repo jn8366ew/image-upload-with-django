@@ -33,6 +33,7 @@ testpaths = ["tests"]
 addopts = "-m 'not s3'"
 markers = [
     "s3: 실제 dev 버킷 계약 테스트. 사용자가 요청할 때만 `-m s3`로 실행",
+    "mongo: 실제 MongoDB가 필요한 테스트. 기본 실행에 포함, 1-E 게이트 확인 시 `-m \"not s3 and not mongo\"`로 제외",
 ]
 
 [tool.coverage.run]

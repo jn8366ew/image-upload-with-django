@@ -22,7 +22,7 @@ paths: backend/**
 - **storage**: `StorageGateway` 프로토콜, boto3 어댑터, in-memory fake. boto3 예외를 도메인 예외로 매핑합니다. boto3는 이 패키지 밖에서 import하지 않습니다.
 - **events**: outbox 기록 헬퍼와 relay. MongoDB 클라이언트(pymongo)는 이 패키지 밖에서 import하지 않습니다.
 - **models**: 필드, DB 제약, 단순 파생 속성만 둡니다. 외부 I/O를 하지 않습니다.
-- **management/commands**: 인자 파싱과 출력만 하고, 로직은 services를 호출합니다.
+- **management/commands**: 인자 파싱과 출력만 하고, 로직은 services를 호출합니다. 예외: MongoDB를 다루는 명령(`ensure_mongo_indexes`, `relay_events`)은 events를 직접 호출합니다. services는 import 계약상 pymongo에 닿을 수 없기 때문입니다(2026-10-16 결정).
 - **signals는 쓰지 않습니다.** 부수효과는 service에서 명시적으로 호출합니다.
 - **도메인 예외 → HTTP 상태 매핑**은 DRF 커스텀 `EXCEPTION_HANDLER` 한 곳에서만 합니다. 다른 사용자의 리소스에 어떤 상태 코드를 줄지는 ADR을 따릅니다.
 
