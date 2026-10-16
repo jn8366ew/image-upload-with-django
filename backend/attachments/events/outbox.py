@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from attachments.models import Attachment, EventOutbox
 
 USER_AGENT_MAX = 512
+OUTBOX_RETENTION = timedelta(days=7)
 
 
 def record_event(

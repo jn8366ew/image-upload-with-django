@@ -225,7 +225,13 @@ def test_maintenance_reports_counts(stored, gateway):
         result = run(gateway)
 
     assert result == MaintenanceResult(
-        processed=7, completed=1, purged=4, skipped=1, failed=1, deleting_remaining=1
+        processed=7,
+        completed=1,
+        purged=4,
+        skipped=1,
+        failed=1,
+        deleting_remaining=1,
+        outbox_deleted=0,
     )
     assert result.processed == result.completed + result.purged + result.skipped + result.failed
 

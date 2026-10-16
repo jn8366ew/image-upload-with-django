@@ -6,13 +6,14 @@ from datetime import datetime, timedelta
 from django.db.models import QuerySet
 from django.utils import timezone
 
+from attachments.events.outbox import OUTBOX_RETENTION
 from attachments.exceptions import (
     StorageAuthError,
     StorageError,
     UploadNotReceived,
     UploadRejected,
 )
-from attachments.models import Attachment
+from attachments.models import Attachment, EventOutbox
 from attachments.services.completion import finalize_pending
 from attachments.services.purge import PurgeOutcome, purge
 from attachments.storage.gateway import StorageGateway
@@ -30,6 +31,7 @@ class MaintenanceResult:
     skipped: int
     failed: int
     deleting_remaining: int
+    outbox_deleted: int
 
 
 def run_maintenance(
@@ -70,6 +72,7 @@ def run_maintenance(
         counts,
         at,
     )
+    outbox_deleted, _ = EventOutbox.objects.filter(published_at__lte=at - OUTBOX_RETENTION).delete()
     return MaintenanceResult(
         processed=counts.total(),
         completed=counts["completed"],
@@ -77,6 +80,7 @@ def run_maintenance(
         skipped=counts["skipped"],
         failed=counts["failed"],
         deleting_remaining=Attachment.objects.filter(status=Attachment.Status.DELETING).count(),
+        outbox_deleted=outbox_deleted,
     )
 
 

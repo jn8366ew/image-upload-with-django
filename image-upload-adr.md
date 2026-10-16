@@ -550,6 +550,9 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 4. 소프트 삭제 후 30일 경과 → 하드 삭제
 5. 업로드 후 1년 경과 → 하드 삭제
 6. 발행 완료 후 7일 지난 `event_outbox` 행 삭제(ADR-013)
+   - 조건은 `published_at <= now - OUTBOX_RETENTION`이고, `OUTBOX_RETENTION`은 `attachments/events/outbox.py`에 있습니다. 보존 기간은 배치가 아니라 outbox의 속성이기 때문입니다.
+   - 미발행 행(`published_at IS NULL`)은 이 조건에 걸리지 않습니다.
+   - 삭제는 `delete()` 한 번이고, fast delete라서 DELETE 쿼리 하나로 끝납니다. 테스트에서 쿼리 수를 단언합니다(2026-10-16).
 
 **실행 규칙 (2026-10-14 결정):**
 - **순서:** `DELETING` 재시도를 맨 앞에 둡니다. 뒤 단계에서 실패해 `DELETING`으로 남은 행은 같은 실행에서 다시 시도하지 않고 다음 실행이 처리합니다. 한 행이 한 실행에서 두 번 시도·집계되지 않습니다.
@@ -560,6 +563,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 **실행 결과 (2026-10-13 결정, 2026-10-14 보완):**
 - 배치 서비스가 결과 dataclass를 반환합니다. 필드는 `processed`, `completed`, `purged`, `skipped`, `failed`, 그리고 실행 후 남은 `DELETING` 건수입니다. 명령은 이 값을 출력만 합니다. 테스트는 반환값으로 검증합니다.
 - **불변식:** `processed == completed + purged + skipped + failed`
+- **`outbox_deleted` (2026-10-16 추가):** 6단계에서 지운 `event_outbox` 행 수입니다. 첨부 처리 건수와 단위가 달라 불변식에서 제외합니다.
 - **종료 코드:** `StorageAuthError`(아래)로 중단하면 비정상 종료합니다. 일시 실패(행 단위 `StorageError`)만 있으면 0입니다.
 
 **`StorageAuthError` (2026-10-14 결정):** `StorageError`의 하위 예외로, "재시도해도 해결되지 않는 인증·권한·설정 오류"입니다. 어댑터는 HTTP 상태가 아니라 오류 코드 allowlist로 분류합니다(S3 공식 Error Responses 문서 기준, 사용자 확인).
@@ -1151,6 +1155,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 
 - [ ] 배포 MongoDB 호스팅: Atlas 무료 티어(기본안)와 egress 방식
 - [ ] `TRUSTED_PROXY_HOPS` 배포 값: 실제 헤더로 확정
+- [ ] `event_outbox` 정리를 배치로 나눌지: 지금은 DELETE 한 번입니다. 발행 행이 크게 쌓이면 1,000건 단위로 나눠 잠금과 WAL 부담을 줄이는 방안을 검토합니다.
 - [ ] Atlas(replica set, 기본 `w=majority`)로 전환할 때 write concern 오류 경로를 실측합니다. write concern 오류만 있는 `BulkWriteError`를 릴레이가 실패로 처리하는지 확인합니다(`_is_all_duplicates`의 빈 `writeErrors` 판정).
 - [ ] 관측 도구: Datadog 또는 CloudWatch
 - [ ] 로그인 시도 제한: 배포 재개 시 필수. DRF `AnonRateThrottle`은 IP 기준이라 여러 IP에서 한 계정을 노리는 credential stuffing을 막지 못하므로, IP 기준과 username 기준(커스텀 throttle)을 병행합니다.

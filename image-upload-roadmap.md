@@ -383,10 +383,10 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-22. 아웃박스 정리 (`attachment_maintenance`에 추가)
 
-- [ ] `test_published_outbox_rows_older_than_7_days_are_deleted`
-- [ ] `test_published_outbox_rows_younger_than_7_days_are_kept`
-- [ ] `test_unpublished_outbox_rows_are_never_deleted`
-- [ ] Refactor 체크포인트
+- [x] `test_published_outbox_rows_older_than_7_days_are_deleted`: `outbox_deleted` 집계를 확인합니다. outbox 쿼리가 DELETE 하나뿐인지도 단언합니다(fast delete). `pre_delete` 리시버를 붙이는 변이로 이 단언이 퇴행을 잡는지 확인했습니다
+- [x] `test_published_outbox_rows_younger_than_7_days_are_kept`: 경계를 고정하는 테스트입니다. 처음부터 통과해서, 보존 기간을 1초 줄이는 변이로 Red를 확인했습니다
+- [x] `test_unpublished_outbox_rows_are_never_deleted`: 미발행 이벤트 유실을 막는 가드입니다. 처음부터 통과해서, `occurred_at__lte` 변이로 Red를 확인했습니다
+- [x] Refactor 체크포인트
 
 ### 1-23. 통계 API `GET /api/attachments/stats?days=30`
 
