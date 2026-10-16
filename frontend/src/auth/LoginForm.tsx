@@ -5,11 +5,11 @@ import { useLogin } from './useLogin'
 export function LoginForm({ onLoggedIn }: { onLoggedIn: (user: SessionUser) => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const loginMutation = useLogin(onLoggedIn)
+  const { login, isPending, errorMessage } = useLogin(onLoggedIn)
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    loginMutation.mutate({ username, password })
+    login({ username, password })
   }
 
   return (
@@ -22,10 +22,10 @@ export function LoginForm({ onLoggedIn }: { onLoggedIn: (user: SessionUser) => v
         비밀번호
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit" disabled={loginMutation.isPending}>
+      <button type="submit" disabled={isPending}>
         로그인
       </button>
-      {loginMutation.isError && <p role="alert">아이디 또는 비밀번호가 올바르지 않습니다</p>}
+      {errorMessage && <p role="alert">{errorMessage}</p>}
     </form>
   )
 }

@@ -427,7 +427,12 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `login form posts credentials and shows upload screen`: `GET /api/auth/csrf`로 쿠키를 받은 뒤 로그인합니다(로그인 view가 CSRF를 검사함, ADR-007)
 - [x] `invalid credentials shows error`
 - [x] `new csrftoken from login response is sent on next POST`: 로그인 응답 Set-Cookie의 새 토큰이 다음 POST 헤더에 실립니다. 토큰을 캐시하지 않는다는 결정을 고정하는 가드입니다. 1-12 구현으로 처음부터 통과해서, 첫 토큰을 캐시하는 변이로 Red(`['OLD', 'OLD']`)를 확인했습니다
+- [x] `server error shows generic message`: 500과 403을 파라미터로 둡니다. 403은 CSRF 실패라 자격 증명 오류가 아닙니다 (2026-10-16 추가)
+- [x] `restores session from me endpoint on load`: `/me` 응답 전에는 로그인 폼을 렌더하지 않습니다(깜빡임 방지) (2026-10-16 추가)
+- [x] `shows login form when me returns 403` (2026-10-16 추가). 2번 구현으로 처음부터 통과해서, 세션이 없을 때도 빈 화면을 보여 주는 변이로 Red를 확인했습니다
 - [x] Refactor 체크포인트
+
+- **세션 상태:** 로그인 상태는 TanStack Query의 `/api/auth/me` 쿼리에 둡니다(`useState`로 복제하지 않음). 로그아웃 버튼은 `POST /api/auth/logout` 뒤 이 쿼리를 갱신해 동작하고, 별도 테스트는 두지 않습니다.
 
 ### 1-13. 사전 검증
 
