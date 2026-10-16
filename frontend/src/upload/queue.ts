@@ -14,6 +14,8 @@ export type Entry = {
 
 export type QueueState = Entry[]
 
+const MAX_RETRIES = 4
+
 export type QueueAction =
   | { type: 'added'; files: { clientRef: string; file: File }[] }
   | { type: 'presign_started'; clientRefs: string[] }
@@ -51,9 +53,16 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         return update(state, action.clientRef, { status: 'failed', retryable: true })
       }
       return state.map((e) =>
-        e.clientRef === action.clientRef
-          ? { ...e, status: 'backoff', attempt: e.attempt + 1, presign: undefined }
-          : e,
+        e.clientRef !== action.clientRef
+          ? e
+          : e.attempt >= MAX_RETRIES
+            ? { ...e, status: 'failed', retryable: true }
+            : {
+              ...e,
+              status: 'backoff',
+              attempt: e.attempt + 1,
+              presign: action.status === 403 ? undefined : e.presign,
+            },
       )
   }
 }

@@ -448,8 +448,8 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `403 clears presign and retries`: `backoff`로 가고(즉시 재발급 아님) presign을 비움. 정책 위반 403의 연속 요청 방지
 - [x] `400 moves to fatal failed`: presign·업로드·complete 세 단계 파라미터
 - [x] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
-- [ ] `network error retries with backoff up to 4 times`
-- [ ] `exhausted retries move to retryable failed`
+- [x] `network error retries with backoff up to 4 times`: status 없음·0·500·503, presign 유지(403과 다름)
+- [x] `exhausted retries move to retryable failed`: 403과 네트워크·5xx를 섞어 합산 확인, 5번째 실패에서 전이
 - [ ] `api 403 on presign or complete moves to fatal failed`: 세션·CSRF 문제 (2026-10-16 추가)
 - [ ] `backoff resumes at failed stage`: 403 → `queued`, 업로드 5xx → `uploading`, complete 5xx → `confirming` (2026-10-16 추가)
 - [ ] `unclassified 4xx moves to fatal failed, 429 to retryable` (2026-10-16 추가)

@@ -86,4 +86,30 @@ describe('queueReducer', () => {
 
     expect(state[0]).toMatchObject({ status: 'failed', retryable: true, attempt: 0 })
   })
+
+  it('network error retries with backoff up to 4 times', () => {
+    let state: QueueState = queueReducer([], { type: 'added', files: [{ clientRef: 'c1', file }] })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1'] })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+
+    for (const [i, status] of [undefined, 0, 500, 503].entries()) {
+      state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'upload', status })
+      expect(state[0]).toMatchObject({ status: 'backoff', attempt: i + 1, presign })
+    }
+  })
+
+  it('exhausted retries move to retryable failed', () => {
+    let state: QueueState = queueReducer([], { type: 'added', files: [{ clientRef: 'c1', file }] })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1'] })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+
+    for (const status of [403, undefined, 403, 503]) {
+      state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'upload', status })
+    }
+    expect(state[0]).toMatchObject({ status: 'backoff', attempt: 4 })
+
+    state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'upload' })
+
+    expect(state[0]).toMatchObject({ status: 'failed', retryable: true })
+  })
 })
