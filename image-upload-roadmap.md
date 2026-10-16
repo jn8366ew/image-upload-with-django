@@ -44,7 +44,7 @@ flowchart LR
 | --- | --- | --- |
 | 0 | 리포 골격, S3 버킷, S3 동작 확인 | `terraform test` 통과, `pytest -m s3` 통과 |
 | 1-B | 업로드·검증·다운로드·삭제·배치 API | 백엔드 테스트 전부 green, diff-cover 100% |
-| 1-E | 이벤트 아웃박스, 릴레이, MongoDB 인덱스, IP 추출, 통계 API | MongoDB를 멈춘 상태에서 1-B 테스트 전부 green, 릴레이 재개 후 누락 없음 |
+| 1-E | 이벤트 아웃박스, 릴레이, MongoDB 인덱스, IP 추출 | MongoDB를 멈춘 상태에서 1-B 테스트 전부 green, 릴레이 재개 후 누락 없음 |
 | 1-F | 업로드 화면, 내 목록, 다운로드, 삭제 | Vitest 전부 green + 실제 dev 버킷 수동 시나리오 |
 | 2 (보류) | ECS·RDS·ALB 배포 | ALB 경유 API 동작, `terraform destroy` → `apply` 재현 |
 | 3 (보류) | CloudFront, 스케줄러, 권한 정리, 관측 | 배포 도메인에서 Phase 1 시나리오 통과, 배치 실행 이력 확인 |
@@ -335,7 +335,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_user_agent_truncated_to_512` (2026-10-15 추가)
 - [x] Refactor 체크포인트
 
-요청 경로에서 MongoDB를 호출하지 않는다는 규칙은 테스트 대신 import-linter 계약 "request path never imports relay"와 "services never reach pymongo"로 강제합니다(2026-10-15 결정, 기존 `test_request_path_never_calls_mongo` 대체).
+요청 경로에서 MongoDB를 호출하지 않는다는 규칙은 테스트 대신 import-linter 계약 "request path never imports relay"와 "request path never reaches pymongo"로 강제합니다(2026-10-15 결정, 기존 `test_request_path_never_calls_mongo` 대체). 뒤의 계약은 처음에 "services never reach pymongo"라는 이름으로 services에만 걸었습니다. 2026-10-16 통계 API를 기각하면서 views까지 넓히고 이름을 바꿨습니다.
 
 ### 1-20. MongoDB 인덱스 (`manage.py ensure_mongo_indexes`, 실제 MongoDB)
 
@@ -388,22 +388,23 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_unpublished_outbox_rows_are_never_deleted`: 미발행 이벤트 유실을 막는 가드입니다. 처음부터 통과해서, `occurred_at__lte` 변이로 Red를 확인했습니다
 - [x] Refactor 체크포인트
 
-### 1-23. 통계 API `GET /api/attachments/stats?days=30`
+### 1-23. 통계 API: 기각 (2026-10-16)
 
-- [ ] `test_stats_requires_authentication`
-- [ ] `test_stats_counts_only_own_events`
-- [ ] `test_stats_buckets_by_utc_day`
-- [ ] `test_stats_respects_days_parameter_and_upper_bound`
-- [ ] `test_stats_response_has_no_ip_or_user_agent`
-- [ ] `test_stats_returns_503_when_mongo_down`
-- [ ] Refactor 체크포인트
-
-- **Mongo 읽기 위치:** stats의 Mongo 읽기는 selectors에 두고 relay 모듈과 분리합니다.
-- **views에 pymongo 간접 금지 걸기:** 지금은 `views.py`가 단일 모듈이라 views에 이 계약을 걸 수 없습니다. 걸면 stats view까지 막힙니다. views를 패키지로 나누면(`views/attachments.py`, `views/stats.py`) stats만 빼고 나머지 views에 계약을 걸 수 있습니다. 1-23 시작 시 결정합니다(2026-10-15 메모).
+사용 목적이 없어 뺐습니다(ADR-013 "통계 API: 기각"). 대신 views 전체에 "pymongo 간접 import 금지" 계약을 겁니다. 계약 이름은 "request path never reaches pymongo"입니다.
 
 **Phase 1-E 게이트:**
 - MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리). 실행 명령은 `uv run pytest -m "not s3 and not mongo"`입니다. CI에 별도 job을 둘지는 1-E를 마무리할 때 검토합니다.
 - MongoDB를 다시 띄우고 릴레이를 돌리면, 멈춘 동안 쌓인 이벤트가 누락 없이 적재됩니다.
+
+**게이트 확인 결과 (2026-10-16): 통과**
+- **Mongo 정지 상태:** `-m "not s3 and not mongo"`로 194 passed입니다.
+- **Mongo 정지 중 이벤트 생성:**
+  - 개발 DB에서 실제 service(`open_download`, `soft_delete`)로 첨부 3개의 이벤트 6건을 만들었습니다. 요청은 정상 처리됐습니다.
+  - `relay_events`는 약 5초 뒤 `CommandError`로 끝났고, 6건은 미발행으로 남았습니다.
+- **Mongo 재기동 후:**
+  - `relay_events`가 `published=6`을 냈습니다. Mongo에는 파일마다 `DOWNLOADED`와 `SOFT_DELETED`가 하나씩 들어갔고, 남은 미발행은 0건입니다.
+  - 다시 실행하면 `published=0`입니다.
+- **정리:** 확인용 데이터는 모두 삭제했습니다.
 
 ---
 
@@ -458,11 +459,9 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `delete removes item from list immediately`: 쿼리 무효화
 - [ ] Refactor 체크포인트
 
-### 1-17a. (선택) 내 통계 화면
+### 1-17a. 내 통계 화면: 기각 (2026-10-16)
 
-- [ ] `renders daily counts from stats endpoint`
-- [ ] `shows fallback message on 503`
-- [ ] Refactor 체크포인트
+통계 API(1-23)를 기각해서 함께 뺐습니다.
 
 **Phase 1-F 게이트:** Vitest 전부 green. 실제 dev 버킷으로 다음 시나리오를 수동 확인합니다.
 - 다중 업로드 → 목록 → 다운로드 → 삭제

@@ -37,7 +37,7 @@
 | 테스트 | Red-Green-Refactor 강제, 테스트 없는 비즈니스 로직 금지, S3 계약 테스트 | 010 |
 | 컨테이너 | 로컬은 Postgres만 compose, 배포는 Django 이미지 하나 | 011 |
 | 파일 제공 | presigned GET 미사용, Django가 S3에서 읽어 스트리밍, key·URL 비노출 | 012 |
-| 활동 로그 | MongoDB에 이벤트 5종 + IP 기록, Postgres 아웃박스 → 릴레이, TTL 400일, 통계 API | 013 |
+| 활동 로그 | MongoDB에 이벤트 5종 + IP 기록, Postgres 아웃박스 → 릴레이, TTL 400일 | 013 |
 | 비용 | 로컬 개발 전용. AWS는 S3·IAM·Budgets만, 시간 과금 리소스 금지, 월 $1 미만 | 014 |
 | 백엔드 계층 | views → services → selectors → storage·events → models, import-linter로 검사 | 015 |
 
@@ -644,7 +644,6 @@ AWS 리소스는 Terraform으로 정의합니다. 기능 개발에 필요한 S3�
   - 아웃박스 기록
   - 클라이언트 IP 추출
   - 릴레이
-  - 통계 aggregation
 
 다음은 비즈니스 로직이 아닙니다.
 
@@ -838,7 +837,7 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 ### 컨텍스트
 
 - ADR-012로 모든 다운로드가 Django를 거치므로, 서버가 모든 파일 접근을 기록할 수 있습니다.
-- 활동 로그는 append-only라서 트랜잭션이나 제약이 필요 없습니다. 대신 TTL 만료와 집계가 필요해서 MongoDB에 잘 맞습니다.
+- 활동 로그는 append-only라서 트랜잭션이나 제약이 필요 없습니다. 대신 TTL 만료와 집계가 필요해서 MongoDB에 잘 맞습니다. 다만 집계를 쓰려던 통계 API는 2026-10-16 기각했습니다(아래 "통계 API").
 - 상태 변경(Postgres)과 이벤트 기록(MongoDB)은 서로 다른 저장소라 하나의 트랜잭션으로 묶을 수 없습니다. 그래서 아웃박스로 원자성을 확보합니다.
 
 ### 이벤트 종류
@@ -913,8 +912,8 @@ class EventOutbox(models.Model):
 | 이름 | 인덱스 | 목적 |
 | --- | --- | --- |
 | `event_id_unique` | `{event_id: 1}` unique | 릴레이 재전송 시 중복 방지(멱등) |
-| `user_occurred_at` | `{user_id: 1, occurred_at: -1}` | 사용자별 조회, 통계 |
-| `attachment_occurred_at` | `{attachment_public_id: 1, occurred_at: -1}` | 파일별 접근 이력(보안 조사) |
+| `user_occurred_at` | `{user_id: 1, occurred_at: -1}` | 운영자 직접 조회(사용자별 이력) |
+| `attachment_occurred_at` | `{attachment_public_id: 1, occurred_at: -1}` | 운영자 직접 조회(파일별 이력) |
 | `occurred_at_ttl` | `{occurred_at: 1}` TTL 400일 | 자동 만료. 첨부 보존 1년보다 길게 잡아, 삭제된 파일의 이력도 추적 가능 |
 
 인덱스 정의는 `attachments/events/indexes.py`의 상수 `INDEXES` 한 곳에 둡니다. `event_id`는 문자열로 저장합니다(2026-10-16 결정).
@@ -988,16 +987,16 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 
 - **목적:** 보안 감사(비정상 다운로드, 계정 도용 조사)로 한정합니다.
 - **보존:** TTL 400일이 지나면 문서와 함께 자동 삭제됩니다.
-- **노출 금지:** 사용자 API(통계 포함)로는 IP를 노출하지 않습니다. 조회는 운영자의 MongoDB 직접 접근으로만 합니다.
+- **노출 금지:** 사용자 API로는 IP를 노출하지 않습니다. 조회는 운영자의 MongoDB 직접 접근으로만 합니다.
 - **법적 검토:** IP는 개인정보로 취급될 수 있으므로, 서비스를 공개한다면 개인정보 처리방침에 수집 항목과 목적, 보존 기간을 명시해야 합니다(법적 판단은 별도 확인 필요).
 
-### 통계 API
+### 통계 API: 기각 (2026-10-16)
 
-`GET /api/attachments/stats?days=30`
-- 로그인 사용자 본인의 일별(UTC) 업로드·다운로드·삭제 수를 반환합니다.
-- MongoDB aggregation(`$match` → `$group` by UTC 일자 → `$sort`)으로 계산합니다.
-- 응답에 IP와 user agent는 포함하지 않습니다.
-- MongoDB에 장애가 나면 이 API만 503을 반환하고, 다른 API에는 영향이 없습니다.
+원래 계획은 `GET /api/attachments/stats?days=30`이었습니다. 본인의 일별(UTC) 업로드·다운로드·삭제 수를 MongoDB aggregation으로 계산하고, Mongo 장애 시 이 API만 503을 내는 방식이었습니다.
+
+- **기각 이유:** 사용 목적이 없습니다. 프론트 통계 화면(1-17a)도 선택 항목이었습니다.
+- **함께 얻는 것:** views에서 Mongo를 읽는 경로가 사라집니다. 그래서 "요청 경로는 Postgres만 쓴다"를 views까지 import 계약으로 보장할 수 있습니다.
+- **조사 방법:** 이력 조사는 운영자가 Mongo 셸로 직접 조회합니다. 별도의 조회 명령은 두지 않습니다.
 
 ### 고려한 대안
 
@@ -1148,7 +1147,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지
 - [ ] 로그인 성공·실패도 보안 이벤트로 기록할지
-- [ ] 통계 API(1-23)의 Mongo 상한: 클라이언트 기본 `timeoutMS=5000`보다 짧게 할지. `with_options`를 쓰거나 `pymongo.timeout()`으로 연산 단위로 줄일 수 있습니다.
+- [x] 통계 API(1-23)의 Mongo 상한: 해당 없음. 통계 API를 기각했습니다(2026-10-16).
 - [ ] 릴레이 backoff에 jitter를 넣을지. 지금은 1초부터 2배씩 늘려 최대 30초이고 jitter는 없습니다. 릴레이를 여러 개 띄울 때 다시 검토합니다.
 
 ### 배포 시 재검토 (ADR-014로 보류)

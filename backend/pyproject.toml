@@ -124,9 +124,9 @@ source_modules = ["attachments.views", "attachments.services"]
 forbidden_modules = ["attachments.events.relay"]
 
 [[tool.importlinter.contracts]]
-name = "services never reach pymongo"
+name = "request path never reaches pymongo"
 type = "forbidden"
-source_modules = ["attachments.services"]
+source_modules = ["attachments.views", "attachments.services"]
 forbidden_modules = ["pymongo"]
 
 [[tool.importlinter.contracts]]

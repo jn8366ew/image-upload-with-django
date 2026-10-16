@@ -94,7 +94,7 @@ CI 게이트는 변경된 비즈니스 로직 라인 커버리지 100%입니다(
 - 시간은 UTC(`TIME_ZONE="UTC"`, `USE_TZ=True`)이고, 모든 시각은 서버가 찍습니다.
 - 확장자는 신뢰하지 않습니다. 포맷은 앞 8바이트 magic bytes로 판정하고, S3 key 확장자는 서버가 정합니다.
 - 이벤트는 비즈니스 상태 변경과 같은 Postgres 트랜잭션에서 `event_outbox`에 기록합니다. 요청 처리 경로에서 MongoDB를 직접 호출하지 않습니다.
-- 사용자 API(통계 포함)로 IP·user agent를 노출하지 않습니다.
+- 사용자 API로 IP·user agent를 노출하지 않습니다.
 
 ## 비용 가드 (ADR-014)
 

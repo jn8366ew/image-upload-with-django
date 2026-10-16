@@ -18,7 +18,7 @@ paths: backend/**
   - `request`, `rest_framework`, `django.http`를 import하지 않습니다.
   - `StorageGateway`와 시각은 인자(또는 기본값 있는 키워드 인자)로 주입받습니다. 테스트에서 fake로 바꿀 수 있어야 합니다.
   - 실패는 `exceptions.py`의 도메인 예외로 던집니다.
-- **selectors** (읽기): 조회·목록·통계 쿼리를 담당하며 소유자 조건을 쿼리에 포함합니다. 부작용이 없습니다.
+- **selectors** (읽기): 조회·목록 쿼리를 담당하며 소유자 조건을 쿼리에 포함합니다. 부작용이 없습니다.
 - **storage**: `StorageGateway` 프로토콜, boto3 어댑터, in-memory fake. boto3 예외를 도메인 예외로 매핑합니다. boto3는 이 패키지 밖에서 import하지 않습니다.
 - **events**: outbox 기록 헬퍼와 relay. MongoDB 클라이언트(pymongo)는 이 패키지 밖에서 import하지 않습니다.
 - **models**: 필드, DB 제약, 단순 파생 속성만 둡니다. 외부 I/O를 하지 않습니다.
