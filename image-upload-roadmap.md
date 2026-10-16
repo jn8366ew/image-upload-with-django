@@ -393,7 +393,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 사용 목적이 없어 뺐습니다(ADR-013 "통계 API: 기각"). 대신 views 전체에 "pymongo 간접 import 금지" 계약을 겁니다. 계약 이름은 "request path never reaches pymongo"입니다.
 
 **Phase 1-E 게이트:**
-- MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리). 실행 명령은 `uv run pytest -m "not s3 and not mongo"`입니다. CI에 별도 job을 둘지는 1-E를 마무리할 때 검토합니다.
+- MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리). 실행 명령은 `uv run pytest -m "not s3 and not mongo"`입니다. CI의 `test-without-mongo` job이 이 명령을 매번 실행합니다(2026-10-16 결정). 이 job은 `MONGO_URI`를 닫힌 포트(`mongodb://127.0.0.1:1/test`)로 두어, mongo 마커가 빠진 테스트가 Mongo에 닿으면 실패하게 합니다. 마커를 뺀 변이로 ERROR 2건이 나는 것을 확인했습니다.
 - MongoDB를 다시 띄우고 릴레이를 돌리면, 멈춘 동안 쌓인 이벤트가 누락 없이 적재됩니다.
 
 **게이트 확인 결과 (2026-10-16): 통과**
