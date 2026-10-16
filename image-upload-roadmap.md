@@ -450,19 +450,19 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
 - [x] `network error retries with backoff up to 4 times`: status 없음·0·500·503, presign 유지(403과 다름)
 - [x] `exhausted retries move to retryable failed`: 403과 네트워크·5xx를 섞어 합산 확인, 5번째 실패에서 전이
-- [ ] `api 403 on presign or complete moves to fatal failed`: 세션·CSRF 문제 (2026-10-16 추가)
-- [ ] `backoff resumes at failed stage`: 403 → `queued`, 업로드 5xx → `uploading`, complete 5xx → `confirming` (2026-10-16 추가)
-- [ ] `unclassified 4xx moves to fatal failed, 429 to retryable` (2026-10-16 추가)
-- [ ] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
-- [ ] `cancel moves uploading file to cancelled`
-- [ ] Refactor 체크포인트
+- [x] `api 403 on presign or complete moves to fatal failed`: 세션·CSRF 문제 (2026-10-16 추가)
+- [x] `backoff resumes at failed stage`: 403 → `queued`, 업로드 5xx → `uploading`, complete 5xx → `confirming` (2026-10-16 추가)
+- [x] `unclassified 4xx moves to fatal failed, 429 to retryable`: 404·413 fatal, 429 retryable, 시도 횟수 미사용 (2026-10-16 추가)
+- [x] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
+- [x] `cancel moves uploading file to cancelled`
+- [x] Refactor 체크포인트: 오류 분류를 `classify()`로 추출, 모든 전이가 `update` 헬퍼 경유(문장·분기 커버리지 100%), 테스트 준비를 `at(stage)`로 통합
 
 ### 1-15. 동시성 풀
 
-- [ ] `never runs more than limit tasks at once`: deferred promise fake uploader
-- [ ] `one failure does not stop other tasks`
-- [ ] `resolves after all tasks settle`
-- [ ] Refactor 체크포인트
+- [x] `never runs more than limit tasks at once`: deferred promise fake uploader
+- [x] `one failure does not stop other tasks`
+- [x] `resolves after all tasks settle`: 입력 순서대로 PromiseSettledResult 반환
+- [x] Refactor 체크포인트: 변경 없음
 
 ### 1-16. 업로드 화면 (React Testing Library + MSW)
 
