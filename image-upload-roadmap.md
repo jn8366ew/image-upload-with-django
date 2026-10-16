@@ -416,7 +416,18 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - `/api` proxy
 - TanStack Query
 - axios 인스턴스(CSRF 헤더)
-- [ ] `reads csrf token from cookie on every request`: 로그인 후 토큰이 바뀌어도 다음 POST에 새 토큰이 실림(ADR-007)
+- [x] `reads csrf token from cookie on every request`: 쿠키를 AAA→BBB로 바꾸며 두 요청의 헤더를 각각 단언합니다(캐시 구현 배제). 로그인 후 토큰이 바뀌어도 다음 POST에 새 토큰이 실립니다(ADR-007)
+  - axios 내장 `xsrfCookieName`·`xsrfHeaderName`만으로 통과했습니다. jsdom에서도 상대 경로 `/api`를 같은 출처로 판정해 `withXSRFToken`이 필요 없었습니다. MSW v2 node 서버가 jsdom의 XHR을 가로채는 것도 확인했습니다(2026-10-16).
+- MSW 서버는 `src/test/setup.ts`에 전역으로 둡니다(`onUnhandledRequest: "error"`). 셋업 확인용 `App.test.tsx`는 Red가 나올 수 없어 삭제했습니다(2026-10-16 승인).
+
+### 1-12a. 로그인 (2026-10-16 추가)
+
+1-16·1-17이 로그인 상태를 전제로 하는데 로그인 화면이 없어 추가했습니다. 로그아웃 버튼은 레이아웃만 두고 테스트하지 않습니다(백엔드 1-3이 보장).
+
+- [ ] `login form posts credentials and shows upload screen`
+- [ ] `invalid credentials shows error`
+- [ ] `new csrftoken from login response is sent on next POST`: 로그인 응답 Set-Cookie의 새 토큰이 다음 POST 헤더에 실립니다
+- [ ] Refactor 체크포인트
 
 ### 1-13. 사전 검증
 
