@@ -58,3 +58,27 @@ def mongo_db(monkeypatch):
     db.client.drop_database(db.name)
     monkeypatch.setattr(mongo, "database", lambda: db)
     return db
+
+
+@pytest.fixture(scope="session")
+def _events_session_db(django_db_setup):
+    from attachments.events import mongo
+    from attachments.events.indexes import ensure_indexes
+
+    default = mongo.database()
+    db = default.client[f"test_{default.name}"]
+    assert db.name.startswith("test_")
+    db.client.drop_database(db.name)
+    ensure_indexes(db)
+    return db
+
+
+@pytest.fixture
+def events_db(_events_session_db, monkeypatch):
+    from attachments.events import mongo
+    from attachments.events.indexes import EVENTS_COLLECTION
+
+    assert _events_session_db.name.startswith("test_")
+    _events_session_db[EVENTS_COLLECTION].delete_many({})
+    monkeypatch.setattr(mongo, "database", lambda: _events_session_db)
+    return _events_session_db[EVENTS_COLLECTION]

@@ -886,7 +886,9 @@ class EventOutbox(models.Model):
         ]
 ```
 
-- `outbox_unpublished_idx`: 릴레이 쿼리(`WHERE published_at IS NULL ORDER BY id LIMIT 100`)는 PK 스캔과 필터만으로도 충분합니다. 이 partial index는 미발행 행이 적을 때 스캔 범위를 줄이는 보조 수단입니다. 실제로 쓰이는지는 1-21에서 `EXPLAIN`으로 한 번 확인합니다.
+- `outbox_unpublished_idx`: 릴레이 쿼리(`WHERE published_at IS NULL ORDER BY id LIMIT 100 FOR UPDATE SKIP LOCKED`)는 PK 스캔과 필터만으로도 충분합니다. 이 partial index는 미발행 행이 적을 때 스캔 범위를 줄이는 보조 수단입니다.
+  - 1-21에서 `EXPLAIN ANALYZE`로 확인했습니다(2026-10-16, Postgres 로컬 docker, `ANALYZE` 후, 트랜잭션 롤백).
+  - 정상 운영 분포(발행 50,000 / 미발행 50)와 릴레이 정지 분포(발행 1,000 / 미발행 50,000) 모두에서 `Index Scan using outbox_unpublished_idx`가 선택됐습니다. 실행 시간은 0.03~0.05ms였습니다.
 - `outbox_published_idx`: 1-22의 정리 쿼리(`published_at < now - 7일`)가 이 인덱스를 범위 조건으로 씁니다.
 
 ### MongoDB `attachment_events`
@@ -923,10 +925,16 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 - **연결 (`attachments/events/mongo.py`):**
   - 접속 정보는 `MONGO_URI` 하나로 받습니다(필수 설정). DB 이름은 URI에 들어 있습니다.
   - 클라이언트는 `tz_aware=True`로 만듭니다. UTC aware 시각을 받기 위해서입니다.
-  - 클라이언트 옵션은 `tz_aware=True`, `serverSelectionTimeoutMS=2000`, `timeoutMS=5000` 세 가지입니다(2026-10-16 결정).
-  - 실패까지 걸리는 시간은 접속할 수 없으면 약 2초, 접속은 되지만 응답이 없으면 약 5초입니다. 따라서 릴레이가 Postgres 행 잠금을 쥐는 시간의 상한은 5초입니다.
-    - `serverSelectionTimeoutMS`(기본값 30초)는 서버를 찾는 시간만 제한합니다.
-    - `timeoutMS`(CSOT, pymongo 4.2부터)는 서버 선택, 전송, 응답, 재시도까지 연산 전체를 제한합니다. 둘 다 있으면 더 짧은 쪽이 적용되는 것으로 추정합니다. 접속 불가 케이스는 1-21에서 실측합니다.
+  - 클라이언트 옵션은 `tz_aware=True`와 `timeoutMS=5000` 두 가지입니다(2026-10-16 결정, 같은 날 실측 후 `serverSelectionTimeoutMS=2000` 제거).
+  - Mongo에 접속할 수 없어도, 접속은 되지만 응답이 없어도 약 5초 안에 실패합니다. 따라서 릴레이가 Postgres 행 잠금을 쥐는 시간의 상한은 5초입니다.
+    - `timeoutMS`(CSOT, pymongo 4.2부터)는 서버 선택, 전송, 응답, 재시도까지 연산 전체를 제한합니다.
+    - **`timeoutMS`가 설정되어 있으면 `serverSelectionTimeoutMS`는 무시됩니다.** 닫힌 포트에 `insert_many`를 실행해 실패까지 걸린 시간은 다음과 같습니다(pymongo 4.18.3 실측).
+      - `serverSelectionTimeoutMS=2000`만 있을 때 2.02초
+      - `timeoutMS=5000`만 있을 때 5.03초
+      - 둘 다 있을 때 5.10초
+      - 2000과 `timeoutMS=1000`일 때 1.02초
+      - 처음에는 "둘 중 짧은 쪽이 적용된다"고 추정했지만 틀렸습니다.
+    - `timeoutMS`를 2초로 낮추지 않은 이유: 원격 Mongo(Atlas)에서는 정상이지만 느린 배치 insert까지 실패로 처리할 수 있기 때문입니다.
     - `socketTimeoutMS`(기본값 무제한)는 쓰지 않습니다. 응답 대기 한 번만 제한하므로, 재시도가 일어나면 실제 상한이 그 두 배가 됩니다.
     - `wTimeoutMS`는 deprecated이고 복제를 기다리는 시간이라 해당하지 않습니다(pymongo 4.18.3 `MongoClient` docstring 확인).
 - **테스트 격리:** 테스트는 `test_<DB 이름>` DB만 씁니다. 접두어를 확인한 뒤에만 drop하고, 해당 테스트에는 `mongo` 마커를 붙입니다.
@@ -935,15 +943,27 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 
 1. 트랜잭션 시작
 2. `published_at IS NULL`인 행을 `id` 순으로 최대 100개, `select_for_update(skip_locked=True)`로 가져옵니다.
-3. `insert_many(ordered=False)`로 MongoDB에 넣습니다. duplicate key 오류(11000)는 이미 발행된 것으로 보고 성공 처리합니다.
+3. `insert_many(ordered=False)`로 MongoDB에 넣습니다. `ordered=True`면 첫 실패에서 멈춰 그 뒤 문서가 전송되지 않으므로 `ordered=False`를 유지합니다. `BulkWriteError.details["writeErrors"]`의 `code`가 **전부** 11000이면 이미 발행된 것으로 보고 성공으로 처리합니다. 이 판정은 순수 함수 `_is_all_duplicates`가 합니다(2026-10-16 결정).
 4. 해당 행들의 `published_at`을 기록하고 커밋합니다.
 5. MongoDB가 실패하면 롤백하고, backoff 후 재시도합니다. 행이 미발행 상태로 남아 다음 루프에서 다시 시도됩니다.
-6. 처리할 행이 없으면 1~2초 쉬고 반복합니다.
+   - 연결 오류(`PyMongoError`)와 11000이 아닌 쓰기 오류가 여기에 해당합니다. 쓰기 오류는 error 로그를 남깁니다.
+   - backoff는 1초부터 2배씩 늘려 최대 30초이고, 성공하면 1초로 되돌립니다. jitter는 미결 사항입니다.
+   - `--loop`가 없으면 `CommandError`로 종료합니다.
+6. 처리할 행이 없으면 1초 쉬고 반복합니다.
 
 특성은 다음과 같습니다.
 - **at-least-once:** 커밋 직전에 죽으면 같은 이벤트가 다시 전송되지만, unique 인덱스가 중복을 흡수합니다.
 - **순서:** 릴레이 간 전송 순서는 보장하지 않습니다. 조회는 `occurred_at`으로 정렬합니다.
 - **동시 실행:** `skip_locked`로 여러 릴레이가 떠 있어도 같은 행을 동시에 잡지 않습니다.
+- **구조:**
+  - `attachments/events/relay.py`의 `relay_once(db, *, batch_size=100, now)`가 한 번 실행하고, `run_loop(db, *, sleep, max_iterations)`가 이를 반복합니다.
+  - 명령 `relay_events`는 `--loop`가 있으면 `run_loop`을 실행하고, 없으면 한 번 실행한 뒤 `published=N`을 출력합니다. Mongo가 실패하면 `CommandError`로 끝납니다.
+  - 루프는 연결 오류에 warning, 11000이 아닌 쓰기 오류에 error 로그를 남깁니다.
+  - 명령은 Mongo 예외를 `attachments.events.mongo.MongoError`로 받습니다. pymongo를 events 밖에서 직접 import하지 않기 위해서입니다.
+- **문서 형태:** `{event_id: str, type, occurred_at, **payload}`입니다. pymongo 4.18.3은 기본 설정(`UuidRepresentation.UNSPECIFIED`)에서 `uuid.UUID`를 저장하지 못합니다(`ValueError`, 실측). 그래서 `event_id`는 str로 저장합니다.
+- **트랜잭션 규칙 2번의 명시적 예외:** 릴레이는 행 잠금을 쥔 트랜잭션 안에서 Mongo를 호출합니다. 규칙 2번은 "외부 호출은 `atomic()` 밖"입니다.
+  - 이유: 잠금 없이 보내면 두 릴레이가 같은 행을 두 번 전송할 수 있습니다. unique 인덱스(11000)가 흡수하긴 하지만 불필요한 중복 전송입니다.
+  - 잠금 보유 상한: `timeoutMS=5000`에 따라 5초입니다(2026-10-16 결정).
 - **배포:** ECS 서비스로 태스크 1개를 상시 실행합니다(같은 Django 이미지).
 - **정리:** 발행된 지 7일 지난 아웃박스 행은 `attachment_maintenance`가 삭제합니다. 미발행 행은 절대 지우지 않습니다.
 
@@ -1131,5 +1151,6 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 
 - [ ] 배포 MongoDB 호스팅: Atlas 무료 티어(기본안)와 egress 방식
 - [ ] `TRUSTED_PROXY_HOPS` 배포 값: 실제 헤더로 확정
+- [ ] Atlas(replica set, 기본 `w=majority`)로 전환할 때 write concern 오류 경로를 실측합니다. write concern 오류만 있는 `BulkWriteError`를 릴레이가 실패로 처리하는지 확인합니다(`_is_all_duplicates`의 빈 `writeErrors` 판정).
 - [ ] 관측 도구: Datadog 또는 CloudWatch
 - [ ] 로그인 시도 제한: 배포 재개 시 필수. DRF `AnonRateThrottle`은 IP 기준이라 여러 IP에서 한 계정을 노리는 credential stuffing을 막지 못하므로, IP 기준과 username 기준(커스텀 throttle)을 병행합니다.

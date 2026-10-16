@@ -350,17 +350,23 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-21. 릴레이 (`manage.py relay_events`, 실제 MongoDB)
 
-- [ ] `test_relay_publishes_unpublished_events_and_marks_published`
-- [ ] `test_relay_skips_already_published_rows`
-- [ ] `test_relay_treats_duplicate_event_id_as_success`: 11000 → 성공 처리
-- [ ] `test_relay_keeps_rows_unpublished_when_mongo_down`
-- [ ] `test_relay_respects_batch_size`
-- [ ] `test_concurrent_relays_do_not_select_same_rows`: `skip_locked`
-- [ ] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null, `event_id`는 str (2026-10-16 결정)
-- [ ] `test_loop_sleeps_when_idle`: 행이 없으면 1초 대기 (2026-10-16 추가)
-- [ ] `test_loop_backs_off_after_mongo_failure`: 1초부터 2배씩 최대 30초, 성공하면 초기화 (2026-10-16 추가)
+- [x] `test_relay_publishes_unpublished_events_and_marks_published`
+- [x] `test_relay_skips_already_published_rows`
+- [x] `test_relay_treats_duplicate_event_id_as_success`: 11000 → 성공 처리
+- [x] `test_is_all_duplicates_only_when_every_write_error_is_11000`: Mongo 없이 쓰는 순수 함수 단위 테스트입니다. `writeErrors`를 직접 만들어 넣고, 11000이 아닌 코드가 하나라도 섞이면 False인지 봅니다 (2026-10-16 추가)
+- [x] `test_relay_keeps_rows_unpublished_when_mongo_down`: at-most-once로 퇴행하지 않게 막는 가드입니다. 처음부터 통과해서, 발행 표시를 먼저 커밋하는 변이로 Red를 확인했습니다(2026-10-16)
+- [x] `test_relay_keeps_rows_unpublished_on_non_duplicate_write_error`: 데이터 유실을 막는 가드입니다. validator로 code 121을 재현했고, 처음부터 통과해서 `raise`를 지우는 변이로 Red를 확인했습니다(2026-10-16 추가, diff-cover가 발견)
+- [x] `test_relay_respects_batch_size`
+- [x] `test_concurrent_relays_do_not_select_same_rows`: `skip_locked`
+- [x] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null, `event_id`는 str (2026-10-16 결정)
+- [x] `test_loop_sleeps_when_idle`: 행이 없으면 1초 대기 (2026-10-16 추가)
+- [x] `test_loop_backs_off_after_mongo_failure`: 1초부터 2배씩 최대 30초, 성공하면 초기화 (2026-10-16 추가)
+- [x] `test_loop_logs_error_for_non_duplicate_write_error`: 11000이 아닌 쓰기 오류는 error 로그, 연결 오류는 warning 로그 (2026-10-16 추가)
+- [x] `test_relay_events_command_publishes_once`: `--loop` 없이 한 번 실행하고 발행 수를 출력 (2026-10-16 추가)
+- [x] `test_relay_events_command_fails_when_mongo_down`: `CommandError` (2026-10-16 추가)
+- [x] `test_relay_events_loop_option_runs_loop` (2026-10-16 추가)
 - [x] relay 모듈을 만든 직후 확인: 모듈 경로가 import 계약 "request path never imports relay"의 `attachments.events.relay`와 글자까지 같은지 보고, 변이(services에서 import)로 BROKEN을 다시 확인합니다. 금지 대상 모듈이 없으면 계약이 KEPT로 통과하기 때문입니다(2026-10-15 실측).
-- [ ] Refactor 체크포인트
+- [x] Refactor 체크포인트
 
 **구조와 실패 처리 (2026-10-16 결정):**
 - **구조:**
@@ -370,10 +376,10 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
   - `insert_many(ordered=False)`를 씁니다. `BulkWriteError`의 오류가 전부 11000이면 성공으로 처리합니다. 이 판정은 순수 함수 `_is_all_duplicates`로 둡니다.
   - 그 밖의 쓰기 오류와 `PyMongoError`는 롤백합니다.
   - `--loop`가 없으면 `CommandError`로 끝냅니다. `--loop`일 때는 warning을 남기고 backoff합니다.
-- **장애 재현:** 닫힌 포트를 가리키는 클라이언트로 재현하고, 실패까지 약 2초 걸리는지 실측합니다.
+- **장애 재현:** 닫힌 포트를 가리키는 클라이언트로 재현합니다. 실측해 보니 실패까지 약 5초가 걸렸습니다. `timeoutMS`가 `serverSelectionTimeoutMS`보다 우선하기 때문입니다(ADR-013).
 - **트랜잭션 예외:** Mongo 호출은 행 잠금을 쥔 트랜잭션 안에서 합니다. 이는 트랜잭션 규칙 2번의 예외입니다(ADR-013).
 
-릴레이 쿼리에 `EXPLAIN`을 한 번 실행해 `outbox_unpublished_idx`가 쓰이는지 확인하고, 결과를 ADR-013에 기록합니다(테스트 아님, 2026-10-15 결정).
+릴레이 쿼리에 `EXPLAIN`을 한 번 실행해 `outbox_unpublished_idx`가 쓰이는지 확인하고, 결과를 ADR-013에 기록합니다(테스트 아님, 2026-10-15 결정). → 확인 완료: 두 분포 모두 해당 인덱스를 썼습니다(2026-10-16).
 
 ### 1-22. 아웃박스 정리 (`attachment_maintenance`에 추가)
 
