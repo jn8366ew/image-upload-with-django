@@ -351,6 +351,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_relay_respects_batch_size`
 - [ ] `test_concurrent_relays_do_not_select_same_rows`: `skip_locked`
 - [ ] `test_relay_document_matches_schema`: `occurred_at` UTC, 시스템 이벤트의 `ip`·`user_agent`는 null
+- [ ] relay 모듈을 만든 직후 확인: 모듈 경로가 import 계약 "request path never imports relay"의 `attachments.events.relay`와 글자까지 같은지 보고, 변이(services에서 import)로 BROKEN을 다시 확인합니다. 금지 대상 모듈이 없으면 계약이 KEPT로 통과하기 때문입니다(2026-10-15 실측).
 - [ ] Refactor 체크포인트
 
 릴레이 쿼리에 `EXPLAIN`을 한 번 실행해 `outbox_unpublished_idx`가 쓰이는지 확인하고, 결과를 ADR-013에 기록합니다(테스트 아님, 2026-10-15 결정).
@@ -371,6 +372,9 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [ ] `test_stats_response_has_no_ip_or_user_agent`
 - [ ] `test_stats_returns_503_when_mongo_down`
 - [ ] Refactor 체크포인트
+
+- **Mongo 읽기 위치:** stats의 Mongo 읽기는 selectors에 두고 relay 모듈과 분리합니다.
+- **views에 pymongo 간접 금지 걸기:** 지금은 `views.py`가 단일 모듈이라 views에 이 계약을 걸 수 없습니다. 걸면 stats view까지 막힙니다. views를 패키지로 나누면(`views/attachments.py`, `views/stats.py`) stats만 빼고 나머지 views에 계약을 걸 수 있습니다. 1-23 시작 시 결정합니다(2026-10-15 메모).
 
 **Phase 1-E 게이트:**
 - MongoDB 컨테이너를 멈춘 상태에서 1-B 테스트가 전부 green입니다(장애 격리).

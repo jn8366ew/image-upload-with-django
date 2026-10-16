@@ -114,6 +114,19 @@ source_modules = [
 ]
 forbidden_modules = ["pymongo"]
 
+# 금지 대상 모듈이 없으면 KEPT로 통과하므로, 모듈 경로가 바뀌면 변이로 BROKEN을 재확인한다
+[[tool.importlinter.contracts]]
+name = "request path never imports relay"
+type = "forbidden"
+source_modules = ["attachments.views", "attachments.services"]
+forbidden_modules = ["attachments.events.relay"]
+
+[[tool.importlinter.contracts]]
+name = "services never reach pymongo"
+type = "forbidden"
+source_modules = ["attachments.services"]
+forbidden_modules = ["pymongo"]
+
 [[tool.importlinter.contracts]]
 name = "accounts does not depend on attachments"
 type = "forbidden"
