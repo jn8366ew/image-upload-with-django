@@ -1,11 +1,15 @@
+from collections.abc import Callable
+from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 
+from attachments.events.outbox import record_event
 from attachments.exceptions import AttachmentNotFound, OperatorNotAllowed
-from attachments.models import Attachment, AttachmentPurgeLog
+from attachments.models import Attachment, AttachmentPurgeLog, EventOutbox
 from attachments.storage.gateway import StorageGateway
 
 
@@ -15,7 +19,13 @@ class PurgeOutcome(Enum):
     SKIPPED_LOCKED = "skipped_locked"
 
 
-def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> PurgeOutcome:
+def purge(
+    attachment_id: int,
+    *,
+    gateway: StorageGateway,
+    requested_by=None,
+    now: Callable[[], datetime] = timezone.now,
+) -> PurgeOutcome:
     if transaction.get_connection().in_atomic_block:
         raise RuntimeError("purge must not run inside an outer transaction")
     with transaction.atomic():
@@ -27,7 +37,7 @@ def purge(attachment_id: int, *, gateway: StorageGateway, requested_by=None) -> 
                 return PurgeOutcome.SKIPPED_LOCKED
             return PurgeOutcome.ALREADY_GONE
         if attachment.status != Attachment.Status.DELETING:
-            _start_purge(attachment, requested_by)
+            _start_purge(attachment, requested_by, now=now())
     gateway.delete(attachment.s3_key)
     deleted, _ = Attachment.objects.filter(pk=attachment_id).delete()
     return PurgeOutcome.PURGED if deleted == 1 else PurgeOutcome.ALREADY_GONE
@@ -45,7 +55,8 @@ def purge_by_operator(
     return purge(attachment.pk, gateway=gateway, requested_by=operator)
 
 
-def _start_purge(attachment: Attachment, requested_by) -> None:
+def _start_purge(attachment: Attachment, requested_by, *, now: datetime) -> None:
+    requested_by_id = requested_by.pk if requested_by else None
     attachment.status = Attachment.Status.DELETING
     attachment.save(update_fields=["status"])
     AttachmentPurgeLog.objects.create(
@@ -55,5 +66,13 @@ def _start_purge(attachment: Attachment, requested_by) -> None:
         original_filename=attachment.original_filename,
         uploaded_at=attachment.uploaded_at,
         deleted_at=attachment.deleted_at,
-        requested_by_id=requested_by.pk if requested_by else None,
+        requested_by_id=requested_by_id,
+    )
+    record_event(
+        EventOutbox.Type.PURGED,
+        attachment,
+        now=now,
+        ip=None,
+        user_agent=None,
+        requested_by_id=requested_by_id,
     )

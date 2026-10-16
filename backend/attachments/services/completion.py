@@ -3,8 +3,10 @@ from collections.abc import Callable
 from datetime import datetime
 from uuid import UUID
 
+from django.db import transaction
 from django.utils import timezone
 
+from attachments.events.outbox import record_event
 from attachments.exceptions import (
     AttachmentNotFound,
     NotOwner,
@@ -14,7 +16,7 @@ from attachments.exceptions import (
     UploadNotReceived,
     UploadRejected,
 )
-from attachments.models import Attachment
+from attachments.models import Attachment, EventOutbox
 from attachments.storage.gateway import StorageGateway
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,8 @@ def complete_upload(
     public_id: UUID,
     *,
     gateway: StorageGateway,
+    ip: str | None,
+    user_agent: str | None,
     now: Callable[[], datetime] = timezone.now,
 ) -> Attachment:
     attachment = (
@@ -42,19 +46,28 @@ def complete_upload(
         return attachment
     if attachment.status == Attachment.Status.REJECTED:
         raise UploadRejected("invalid_format")
-    return finalize_pending(attachment, gateway=gateway, now=now())
+    return finalize_pending(attachment, gateway=gateway, now=now(), ip=ip, user_agent=user_agent)
 
 
 def finalize_pending(
-    attachment: Attachment, *, gateway: StorageGateway, now: datetime
+    attachment: Attachment,
+    *,
+    gateway: StorageGateway,
+    now: datetime,
+    ip: str | None,
+    user_agent: str | None,
 ) -> Attachment:
     try:
         declared = gateway.head(attachment.s3_key)
     except ObjectNotFound as e:
         raise UploadNotReceived(attachment.public_id) from e
     if not gateway.read_prefix(attachment.s3_key).startswith(SIGNATURES[declared]):
-        _reject(attachment, gateway)
-    _pending(attachment).update(status=Attachment.Status.COMPLETED, uploaded_at=now)
+        _reject(attachment, gateway, now=now, ip=ip, user_agent=user_agent)
+    with transaction.atomic():
+        if _pending(attachment).update(status=Attachment.Status.COMPLETED, uploaded_at=now) == 1:
+            record_event(
+                EventOutbox.Type.UPLOAD_COMPLETED, attachment, now=now, ip=ip, user_agent=user_agent
+            )
     attachment.refresh_from_db()
     return attachment
 
@@ -63,8 +76,19 @@ def _pending(attachment: Attachment):
     return Attachment.objects.filter(pk=attachment.pk, status=Attachment.Status.PENDING)
 
 
-def _reject(attachment: Attachment, gateway: StorageGateway) -> None:
-    _pending(attachment).update(status=Attachment.Status.REJECTED)
+def _reject(
+    attachment: Attachment,
+    gateway: StorageGateway,
+    *,
+    now: datetime,
+    ip: str | None,
+    user_agent: str | None,
+) -> None:
+    with transaction.atomic():
+        if _pending(attachment).update(status=Attachment.Status.REJECTED) == 1:
+            record_event(
+                EventOutbox.Type.UPLOAD_REJECTED, attachment, now=now, ip=ip, user_agent=user_agent
+            )
     attachment.refresh_from_db()
     try:
         gateway.delete(attachment.s3_key)

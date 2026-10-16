@@ -9,13 +9,14 @@ from attachments.services.completion import complete_upload
 PNG = b"\x89PNG\r\n\x1a\n" + b"png-body"
 JPEG = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"jpeg-body"
 NOW = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
+NO_CLIENT = {"ip": None, "user_agent": None}
 
 
 def test_complete_png_signature_marks_completed(user, gateway, make_attachment):
     att = make_attachment(ext=".png")
     gateway.put(att.s3_key, PNG, "image/png")
 
-    result = complete_upload(user, att.public_id, gateway=gateway, now=lambda: NOW)
+    result = complete_upload(user, att.public_id, gateway=gateway, now=lambda: NOW, **NO_CLIENT)
 
     att.refresh_from_db()
     assert result.status == att.status == Attachment.Status.COMPLETED
@@ -26,7 +27,7 @@ def test_complete_jpeg_signature_marks_completed(user, gateway, make_attachment)
     att = make_attachment(ext=".jpg")
     gateway.put(att.s3_key, JPEG, "image/jpeg")
 
-    complete_upload(user, att.public_id, gateway=gateway, now=lambda: NOW)
+    complete_upload(user, att.public_id, gateway=gateway, now=lambda: NOW, **NO_CLIENT)
 
     att.refresh_from_db()
     assert (att.status, att.uploaded_at) == (Attachment.Status.COMPLETED, NOW)
@@ -37,7 +38,7 @@ def test_complete_mismatched_signature_rejects_and_deletes_object(user, gateway,
     gateway.put(att.s3_key, b"<svg xmlns=", "image/png")
 
     with pytest.raises(UploadRejected) as exc:
-        complete_upload(user, att.public_id, gateway=gateway)
+        complete_upload(user, att.public_id, gateway=gateway, **NO_CLIENT)
 
     assert exc.value.reason == "invalid_format"
     att.refresh_from_db()
@@ -53,7 +54,7 @@ def test_complete_signature_must_match_declared_type(
     gateway.put(att.s3_key, body, declared)
 
     with pytest.raises(UploadRejected):
-        complete_upload(user, att.public_id, gateway=gateway)
+        complete_upload(user, att.public_id, gateway=gateway, **NO_CLIENT)
 
     att.refresh_from_db()
     assert att.status == Attachment.Status.REJECTED
@@ -67,7 +68,7 @@ def test_complete_file_shorter_than_signature_rejects(
     gateway.put(att.s3_key, body, declared)
 
     with pytest.raises(UploadRejected):
-        complete_upload(user, att.public_id, gateway=gateway)
+        complete_upload(user, att.public_id, gateway=gateway, **NO_CLIENT)
 
     att.refresh_from_db()
     assert att.status == Attachment.Status.REJECTED
@@ -79,7 +80,7 @@ def test_complete_reject_keeps_rejected_when_delete_fails(user, gateway, make_at
     gateway.fail_delete_for.add(att.s3_key)
 
     with pytest.raises(UploadRejected):
-        complete_upload(user, att.public_id, gateway=gateway)
+        complete_upload(user, att.public_id, gateway=gateway, **NO_CLIENT)
 
     att.refresh_from_db()
     assert att.status == Attachment.Status.REJECTED
@@ -98,7 +99,7 @@ def test_complete_reject_logs_error_when_delete_auth_fails(user, gateway, make_a
     gateway.delete = auth_failing_delete
 
     with pytest.raises(UploadRejected):
-        complete_upload(user, att.public_id, gateway=gateway)
+        complete_upload(user, att.public_id, gateway=gateway, **NO_CLIENT)
 
     att.refresh_from_db()
     assert att.status == Attachment.Status.REJECTED

@@ -1,9 +1,14 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
+from django.utils import timezone
+
+from attachments.events.outbox import record_event
 from attachments.exceptions import AttachmentNotFound, NotOwner, ObjectNotFound
-from attachments.models import Attachment
+from attachments.models import Attachment, EventOutbox
 from attachments.storage.gateway import StorageGateway, StoredObject
 
 logger = logging.getLogger(__name__)
@@ -15,7 +20,15 @@ class Download:
     stored: StoredObject
 
 
-def open_download(user, public_id: UUID, *, gateway: StorageGateway) -> Download:
+def open_download(
+    user,
+    public_id: UUID,
+    *,
+    gateway: StorageGateway,
+    ip: str | None,
+    user_agent: str | None,
+    now: Callable[[], datetime] = timezone.now,
+) -> Download:
     attachment = Attachment.objects.filter(
         public_id=public_id, status=Attachment.Status.COMPLETED, deleted_at__isnull=True
     ).first()
@@ -28,4 +41,5 @@ def open_download(user, public_id: UUID, *, gateway: StorageGateway) -> Download
     except ObjectNotFound as e:
         logger.warning("download %s: object missing in storage", public_id)
         raise AttachmentNotFound(public_id) from e
+    record_event(EventOutbox.Type.DOWNLOADED, attachment, now=now(), ip=ip, user_agent=user_agent)
     return Download(attachment, stored)

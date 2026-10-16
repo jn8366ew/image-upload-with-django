@@ -37,29 +37,30 @@ def run_maintenance(
 ) -> MaintenanceResult:
     at = now()
     counts: Counter[str] = Counter()
-    _purge_all(Attachment.objects.filter(status=Attachment.Status.DELETING), gateway, counts)
+    _purge_all(Attachment.objects.filter(status=Attachment.Status.DELETING), gateway, counts, at)
     stale = Attachment.objects.filter(
         status=Attachment.Status.PENDING, created_at__lte=at - PENDING_TTL
     )
     for attachment in list(stale):
         try:
-            finalize_pending(attachment, gateway=gateway, now=at)
+            finalize_pending(attachment, gateway=gateway, now=at, ip=None, user_agent=None)
             counts["completed"] += 1
         except UploadNotReceived:
-            _purge_one(attachment.pk, gateway, counts)
+            _purge_one(attachment.pk, gateway, counts, at)
         except UploadRejected:
             pass
         except StorageAuthError:
             raise
         except StorageError:
             counts["failed"] += 1
-    _purge_all(Attachment.objects.filter(status=Attachment.Status.REJECTED), gateway, counts)
+    _purge_all(Attachment.objects.filter(status=Attachment.Status.REJECTED), gateway, counts, at)
     _purge_all(
         Attachment.objects.filter(
             status=Attachment.Status.COMPLETED, deleted_at__lte=at - SOFT_DELETE_TTL
         ),
         gateway,
         counts,
+        at,
     )
     _purge_all(
         Attachment.objects.filter(
@@ -67,6 +68,7 @@ def run_maintenance(
         ),
         gateway,
         counts,
+        at,
     )
     return MaintenanceResult(
         processed=counts.total(),
@@ -79,15 +81,17 @@ def run_maintenance(
 
 
 def _purge_all(
-    targets: QuerySet[Attachment], gateway: StorageGateway, counts: Counter[str]
+    targets: QuerySet[Attachment], gateway: StorageGateway, counts: Counter[str], at: datetime
 ) -> None:
     for attachment_id in list(targets.values_list("pk", flat=True)):
-        _purge_one(attachment_id, gateway, counts)
+        _purge_one(attachment_id, gateway, counts, at)
 
 
-def _purge_one(attachment_id: int, gateway: StorageGateway, counts: Counter[str]) -> None:
+def _purge_one(
+    attachment_id: int, gateway: StorageGateway, counts: Counter[str], at: datetime
+) -> None:
     try:
-        outcome = purge(attachment_id, gateway=gateway)
+        outcome = purge(attachment_id, gateway=gateway, now=lambda: at)
     except StorageAuthError:
         raise
     except StorageError:

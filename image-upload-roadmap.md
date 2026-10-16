@@ -322,17 +322,20 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-19. 아웃박스 기록 (같은 트랜잭션)
 
-- [ ] `test_complete_writes_upload_completed_event`
-- [ ] `test_concurrent_complete_writes_one_event`: `filter(status=PENDING).update()` 반환값 1일 때만 기록(ADR-003)
-- [ ] `test_reject_writes_upload_rejected_event`
-- [ ] `test_download_writes_downloaded_event_with_ip_and_user_agent`
-- [ ] `test_download_denied_writes_no_event`: 403·404에서는 기록하지 않음
-- [ ] `test_soft_delete_writes_soft_deleted_event`
-- [ ] `test_purge_by_batch_writes_purged_event_with_null_ip`
-- [ ] `test_purge_by_ops_writes_requested_by`
-- [ ] `test_event_rolled_back_with_business_transaction`: 상태 변경이 롤백되면 이벤트도 남지 않음
-- [ ] `test_request_path_never_calls_mongo`: 요청 처리 중 MongoDB 클라이언트 호출 없음
-- [ ] Refactor 체크포인트
+- [x] `test_complete_writes_upload_completed_event`
+- [x] `test_concurrent_complete_writes_one_event`: `filter(status=PENDING).update()` 반환값 1일 때만 기록(ADR-003)
+- [x] `test_reject_writes_upload_rejected_event`
+- [x] `test_download_writes_downloaded_event_with_ip_and_user_agent`
+- [x] `test_download_denied_writes_no_event`: 403·404에서는 기록하지 않음. 감사 로그 가드라 변이(기록을 인가 앞으로 이동)로 Red를 확인했습니다. 소프트 삭제 케이스는 조회 단계에서 걸러져 Red가 나올 수 없어 뺐습니다(2026-10-16)
+- [x] `test_soft_delete_writes_soft_deleted_event`
+- [x] `test_repeated_soft_delete_writes_one_event`: `update()` 반환값 1일 때만 기록 (2026-10-15 추가)
+- [x] `test_purge_by_batch_writes_purged_event_with_null_ip`
+- [x] `test_purge_by_ops_writes_requested_by`
+- [x] `test_event_rolled_back_with_business_transaction`: 상태 변경이 롤백되면 이벤트도 남지 않음
+- [x] `test_user_agent_truncated_to_512` (2026-10-15 추가)
+- [x] Refactor 체크포인트
+
+요청 경로에서 MongoDB를 호출하지 않는다는 규칙은 테스트 대신 import-linter 계약 "request path never imports relay"와 "services never reach pymongo"로 강제합니다(2026-10-15 결정, 기존 `test_request_path_never_calls_mongo` 대체).
 
 ### 1-20. MongoDB 인덱스 (`manage.py ensure_mongo_indexes`, 실제 MongoDB)
 

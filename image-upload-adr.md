@@ -841,13 +841,31 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 
 | type | 기록 시점 | 같은 트랜잭션 |
 | --- | --- | --- |
-| `UPLOAD_COMPLETED` | `/complete` 검증 통과 | `COMPLETED` 전환 |
-| `UPLOAD_REJECTED` | `/complete` 시그니처 불일치 | `REJECTED` 전환 |
-| `DOWNLOADED` | 다운로드 인가 통과 후, 스트리밍 직전 | 이벤트 단독 트랜잭션 |
+| `UPLOAD_COMPLETED` | `/complete` 검증 통과, 또는 배치의 24시간 경과 `PENDING` 확정 | `COMPLETED` 전환 |
+| `UPLOAD_REJECTED` | `/complete` 또는 배치에서 시그니처 불일치 | `REJECTED` 전환 |
+| `DOWNLOADED` | 다운로드 인가와 `gateway.open` 통과 후, 스트리밍 직전 | 이벤트 단독 트랜잭션 |
 | `SOFT_DELETED` | 사용자 삭제 | `deleted_at` 기록 |
 | `PURGED` | 하드 삭제(배치·운영) | `DELETING` 전환 + 감사 로그 |
 
-`DOWNLOADED`는 "다운로드 응답을 시작했다"는 의미입니다. 전송 완료까지 보장하지는 않습니다.
+`DOWNLOADED`는 "다운로드 응답을 시작했다"는 의미입니다. 전송 완료까지 보장하지는 않습니다. 403·404(객체 없음 포함)에서는 기록하지 않습니다.
+
+**기록 값 (2026-10-15 결정):**
+- **ip·user_agent:**
+  - 사용자 요청 이벤트 4종(`UPLOAD_COMPLETED`, `UPLOAD_REJECTED`, `DOWNLOADED`, `SOFT_DELETED`)에 기록합니다.
+  - view가 `client_ip()`와 `User-Agent`를 service의 필수 키워드 인자로 넘깁니다.
+  - 배치 경로와 `PURGED`는 둘 다 null입니다.
+- **user_agent 길이:** 512자로 자릅니다. 잘렸다는 표시 필드는 두지 않습니다.
+- **requested_by:** 운영 삭제(`purge_attachment`)일 때만 운영자 user id를 넣습니다. `AttachmentPurgeLog.requested_by_id`와 같은 값입니다.
+- **occurred_at:** `auto_now_add`가 아니라 `record_event(now=...)` 인자로 받습니다. 배치가 실행을 시작할 때 구한 시각과 이벤트 시각을 맞추기 위해서입니다.
+- **중복 방지:** 같은 첨부에 대한 반복 호출이나 동시 호출은 조건부 `update()`가 1을 반환한 쪽만 기록합니다. 이미 `DELETING`인 행의 재시도는 `PURGED`를 다시 기록하지 않습니다.
+
+### 트랜잭션 규칙 (2026-10-15 결정)
+
+1. `ATOMIC_REQUESTS`는 쓰지 않습니다. `transaction.atomic()`은 각 서비스 함수 안에 둡니다.
+2. S3 호출(`head`, `read_prefix`, `open`, `delete`)은 전부 `atomic()` 밖에서 합니다.
+3. 상태 변경은 조건부 `update()`로 합니다. 반환값이 1일 때만 같은 `atomic()` 안에서 `record_event`를 호출합니다.
+4. 예외는 `atomic()` 블록을 닫은 뒤 던집니다. 예를 들어 거절 시에는 `REJECTED` 전환을 커밋한 뒤 S3를 삭제하고 `UploadRejected`를 던집니다.
+5. 경쟁에서 진 쪽(반환값 0)은 `refresh_from_db` 후 현재 상태로 응답하고, 이벤트를 남기지 않습니다.
 
 ### Postgres `event_outbox`
 
@@ -925,7 +943,7 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
   - 그 외에는 `X-Forwarded-For`를 `,`로 나눠 항목마다 양쪽 공백을 지우고, **오른쪽에서 `TRUSTED_PROXY_HOPS`번째 값**을 클라이언트 IP로 씁니다. 프록시는 각자 자기에게 접속한 주소를 오른쪽에 덧붙이므로, hops=2면 `"9.9.9.9, 203.0.113.7, 70.1.1.1"`(위조값, 실제 클라이언트, CloudFront 엣지)에서 `203.0.113.7`입니다. (2026-10-15 결정: 이전 문구 "덧붙인 값만 인정하고 그 바로 앞 값"은 오른쪽에서 hops+1번째, 즉 위조 가능한 값으로 읽힐 수 있어 수정)
   - 항목 수가 hops보다 적거나 헤더가 없으면 `null`입니다. 신뢰 경로를 거치지 않은 요청이고, `REMOTE_ADDR`(ALB 주소)을 클라이언트로 기록하면 감사 로그가 틀려지기 때문입니다.
 - **검증:** `ipaddress`로 파싱할 수 없는 값(포트가 붙은 `1.2.3.4:80` 포함)이면 `null`로 저장합니다. 요청은 거부하지 않습니다. IPv6는 압축형으로 정규화합니다(`2001:db8:0:0::1` → `2001:db8::1`).
-- **구현:** `attachments/client_ip.py`의 순수 함수 `client_ip(meta, *, trusted_hops) -> str | None`. view가 `request.META`와 설정값을 넘기고, 결과 문자열을 service에 전달합니다(1-19).
+- **구현:** `attachments/client_ip.py`의 순수 함수 `client_ip(meta, *, trusted_hops) -> str | None`. view의 `_client(request)`가 `request.META`와 `TRUSTED_PROXY_HOPS`로 이 함수를 호출하고, 결과를 `User-Agent`와 함께 service에 넘깁니다(1-19).
 - **배포 시 확인:** 실제 홉 수는 Phase 3에서 CloudFront를 붙인 뒤 요청 헤더로 확인하고 값을 확정합니다.
 
 ### IP 취급
