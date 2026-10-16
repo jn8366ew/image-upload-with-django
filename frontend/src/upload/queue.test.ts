@@ -63,4 +63,27 @@ describe('queueReducer', () => {
     expect(state[0]).toMatchObject({ status: 'backoff', attempt: 1, presign: undefined })
     expect(state[1]).toBe(before)
   })
+
+  it.each(['presign', 'upload', 'complete'] as const)('400 moves to fatal failed (%s)', (stage) => {
+    const steps = { presign: 0, upload: 1, complete: 2 }[stage]
+    let state: QueueState = queueReducer([], { type: 'added', files: [{ clientRef: 'c1', file }] })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1'] })
+    if (steps >= 1) state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+    if (steps >= 2) state = queueReducer(state, { type: 'uploaded', clientRef: 'c1' })
+
+    state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage, status: 400 })
+
+    expect(state[0]).toMatchObject({ status: 'failed', retryable: false })
+  })
+
+  it('409 on complete moves to retryable failed', () => {
+    let state: QueueState = queueReducer([], { type: 'added', files: [{ clientRef: 'c1', file }] })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1'] })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+    state = queueReducer(state, { type: 'uploaded', clientRef: 'c1' })
+
+    state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'complete', status: 409 })
+
+    expect(state[0]).toMatchObject({ status: 'failed', retryable: true, attempt: 0 })
+  })
 })

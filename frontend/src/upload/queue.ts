@@ -1,4 +1,4 @@
-export type Status = 'queued' | 'presigning' | 'uploading' | 'confirming' | 'backoff' | 'done'
+export type Status = 'queued' | 'presigning' | 'uploading' | 'confirming' | 'backoff' | 'done' | 'failed'
 
 export type Presign = { publicId: string; url: string; fields: Record<string, string> }
 
@@ -9,6 +9,7 @@ export type Entry = {
   loaded: number
   attempt: number
   presign?: Presign
+  retryable?: boolean
 }
 
 export type QueueState = Entry[]
@@ -43,6 +44,12 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
     case 'completed':
       return update(state, action.clientRef, { status: 'done' })
     case 'failed':
+      if (action.status === 400) {
+        return update(state, action.clientRef, { status: 'failed', retryable: false })
+      }
+      if (action.status === 409) {
+        return update(state, action.clientRef, { status: 'failed', retryable: true })
+      }
       return state.map((e) =>
         e.clientRef === action.clientRef
           ? { ...e, status: 'backoff', attempt: e.attempt + 1, presign: undefined }
