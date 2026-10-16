@@ -7,7 +7,9 @@ from pymongo.database import Database
 
 @cache
 def client() -> MongoClient:
-    return MongoClient(settings.MONGO_URI, tz_aware=True, serverSelectionTimeoutMS=2000)
+    return MongoClient(
+        settings.MONGO_URI, tz_aware=True, serverSelectionTimeoutMS=2000, timeoutMS=5000
+    )
 
 
 def database() -> Database:

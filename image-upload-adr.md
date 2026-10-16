@@ -923,7 +923,12 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 - **연결 (`attachments/events/mongo.py`):**
   - 접속 정보는 `MONGO_URI` 하나로 받습니다(필수 설정). DB 이름은 URI에 들어 있습니다.
   - 클라이언트는 `tz_aware=True`로 만듭니다. UTC aware 시각을 받기 위해서입니다.
-  - `serverSelectionTimeoutMS=2000`으로 둡니다. Mongo 장애 시 릴레이와 통계 API가 기본값 30초(추정, pymongo 문서 기준) 동안 멈추지 않게 하기 위해서입니다.
+  - 클라이언트 옵션은 `tz_aware=True`, `serverSelectionTimeoutMS=2000`, `timeoutMS=5000` 세 가지입니다(2026-10-16 결정).
+  - 실패까지 걸리는 시간은 접속할 수 없으면 약 2초, 접속은 되지만 응답이 없으면 약 5초입니다. 따라서 릴레이가 Postgres 행 잠금을 쥐는 시간의 상한은 5초입니다.
+    - `serverSelectionTimeoutMS`(기본값 30초)는 서버를 찾는 시간만 제한합니다.
+    - `timeoutMS`(CSOT, pymongo 4.2부터)는 서버 선택, 전송, 응답, 재시도까지 연산 전체를 제한합니다. 둘 다 있으면 더 짧은 쪽이 적용되는 것으로 추정합니다. 접속 불가 케이스는 1-21에서 실측합니다.
+    - `socketTimeoutMS`(기본값 무제한)는 쓰지 않습니다. 응답 대기 한 번만 제한하므로, 재시도가 일어나면 실제 상한이 그 두 배가 됩니다.
+    - `wTimeoutMS`는 deprecated이고 복제를 기다리는 시간이라 해당하지 않습니다(pymongo 4.18.3 `MongoClient` docstring 확인).
 - **테스트 격리:** 테스트는 `test_<DB 이름>` DB만 씁니다. 접두어를 확인한 뒤에만 drop하고, 해당 테스트에는 `mongo` 마커를 붙입니다.
 
 ### 릴레이: `manage.py relay_events --loop`
@@ -1119,6 +1124,8 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지
 - [ ] 로그인 성공·실패도 보안 이벤트로 기록할지
+- [ ] 통계 API(1-23)의 Mongo 상한: 클라이언트 기본 `timeoutMS=5000`보다 짧게 할지. `with_options`를 쓰거나 `pymongo.timeout()`으로 연산 단위로 줄일 수 있습니다.
+- [ ] 릴레이 backoff에 jitter를 넣을지. 지금은 1초부터 2배씩 늘려 최대 30초이고 jitter는 없습니다. 릴레이를 여러 개 띄울 때 다시 검토합니다.
 
 ### 배포 시 재검토 (ADR-014로 보류)
 
