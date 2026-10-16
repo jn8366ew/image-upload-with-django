@@ -424,10 +424,10 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 1-16·1-17이 로그인 상태를 전제로 하는데 로그인 화면이 없어 추가했습니다. 로그아웃 버튼은 레이아웃만 두고 테스트하지 않습니다(백엔드 1-3이 보장).
 
-- [ ] `login form posts credentials and shows upload screen`
-- [ ] `invalid credentials shows error`
-- [ ] `new csrftoken from login response is sent on next POST`: 로그인 응답 Set-Cookie의 새 토큰이 다음 POST 헤더에 실립니다
-- [ ] Refactor 체크포인트
+- [x] `login form posts credentials and shows upload screen`: `GET /api/auth/csrf`로 쿠키를 받은 뒤 로그인합니다(로그인 view가 CSRF를 검사함, ADR-007)
+- [x] `invalid credentials shows error`
+- [x] `new csrftoken from login response is sent on next POST`: 로그인 응답 Set-Cookie의 새 토큰이 다음 POST 헤더에 실립니다. 토큰을 캐시하지 않는다는 결정을 고정하는 가드입니다. 1-12 구현으로 처음부터 통과해서, 첫 토큰을 캐시하는 변이로 Red(`['OLD', 'OLD']`)를 확인했습니다
+- [x] Refactor 체크포인트
 
 ### 1-13. 사전 검증
 
