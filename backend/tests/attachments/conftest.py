@@ -46,3 +46,15 @@ def make_attachment(user):
         )
 
     return make
+
+
+@pytest.fixture
+def mongo_db(monkeypatch):
+    from attachments.events import mongo
+
+    default = mongo.database()
+    db = default.client[f"test_{default.name}"]
+    assert db.name.startswith("test_")
+    db.client.drop_database(db.name)
+    monkeypatch.setattr(mongo, "database", lambda: db)
+    return db

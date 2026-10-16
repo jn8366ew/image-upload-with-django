@@ -339,10 +339,10 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 
 ### 1-20. MongoDB 인덱스 (`manage.py ensure_mongo_indexes`, 실제 MongoDB)
 
-- [ ] `test_creates_unique_event_id_index`
-- [ ] `test_creates_ttl_index_400_days_on_occurred_at`
-- [ ] `test_creates_user_and_attachment_lookup_indexes`
-- [ ] Refactor 체크포인트
+- [x] `test_creates_unique_event_id_index`
+- [x] `test_creates_ttl_index_400_days_on_occurred_at`
+- [x] `test_creates_user_and_attachment_lookup_indexes`
+- [x] Refactor 체크포인트
 
 - **인덱스 정의:** 인덱스 4개(`event_id_unique`, `user_occurred_at`, `attachment_occurred_at`, `occurred_at_ttl`)는 `attachments/events/indexes.py`의 상수 하나로 두고, `ensure_indexes`와 테스트가 함께 씁니다.
 - **멱등 테스트 삭제:** `create_index`가 원래 멱등이라 Red가 나올 수 없어서 `test_ensure_indexes_is_idempotent`를 뺐습니다. 정의가 충돌하면(같은 이름, 다른 옵션) 오류로 실패시키고, 실제 변경은 수동 `collMod`로 합니다(2026-10-16 결정).

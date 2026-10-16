@@ -904,18 +904,27 @@ class EventOutbox(models.Model):
 }
 ```
 
-| 인덱스 | 목적 |
-| --- | --- |
-| `{event_id: 1}` unique | 릴레이 재전송 시 중복 방지(멱등) |
-| `{user_id: 1, occurred_at: -1}` | 사용자별 조회, 통계 |
-| `{attachment_public_id: 1, occurred_at: -1}` | 파일별 접근 이력(보안 조사) |
-| `{occurred_at: 1}` TTL 400일 | 자동 만료. 첨부 보존 1년보다 길게 잡아, 삭제된 파일의 이력도 추적 가능 |
+| 이름 | 인덱스 | 목적 |
+| --- | --- | --- |
+| `event_id_unique` | `{event_id: 1}` unique | 릴레이 재전송 시 중복 방지(멱등) |
+| `user_occurred_at` | `{user_id: 1, occurred_at: -1}` | 사용자별 조회, 통계 |
+| `attachment_occurred_at` | `{attachment_public_id: 1, occurred_at: -1}` | 파일별 접근 이력(보안 조사) |
+| `occurred_at_ttl` | `{occurred_at: 1}` TTL 400일 | 자동 만료. 첨부 보존 1년보다 길게 잡아, 삭제된 파일의 이력도 추적 가능 |
+
+인덱스 정의는 `attachments/events/indexes.py`의 상수 `INDEXES` 한 곳에 둡니다. `event_id`는 문자열로 저장합니다(2026-10-16 결정).
 
 이벤트 문서에는 `s3_key`와 파일명을 넣지 않습니다. 하드 삭제된 첨부가 어떤 파일이었는지는 `attachment_public_id`로 Postgres `AttachmentPurgeLog`(ADR-005)를 조회해 확인합니다.
 
 TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로, 만료 시각보다 늦게 지워질 수 있습니다.
 
 인덱스는 `manage.py ensure_mongo_indexes`로 생성합니다. 이 커맨드는 멱등이며, 배포할 때마다 실행합니다.
+
+- **정의 충돌:** 같은 이름에 옵션만 다른 인덱스(예: TTL 일수 변경)가 이미 있으면, MongoDB가 `OperationFailure` code 85를 내고 명령이 실패합니다(2026-10-16 실측). 자동으로 고치지 않습니다. 실제로 바꿀 때는 `collMod`를 수동으로 실행합니다.
+- **연결 (`attachments/events/mongo.py`):**
+  - 접속 정보는 `MONGO_URI` 하나로 받습니다(필수 설정). DB 이름은 URI에 들어 있습니다.
+  - 클라이언트는 `tz_aware=True`로 만듭니다. UTC aware 시각을 받기 위해서입니다.
+  - `serverSelectionTimeoutMS=2000`으로 둡니다. Mongo 장애 시 릴레이와 통계 API가 기본값 30초(추정, pymongo 문서 기준) 동안 멈추지 않게 하기 위해서입니다.
+- **테스트 격리:** 테스트는 `test_<DB 이름>` DB만 씁니다. 접두어를 확인한 뒤에만 drop하고, 해당 테스트에는 `mongo` 마커를 붙입니다.
 
 ### 릴레이: `manage.py relay_events --loop`
 
