@@ -75,3 +75,28 @@ export function createUploadApi({ uploadTimeout = 30_000, apiTimeout = 15_000 } 
 }
 
 export const uploadApi = createUploadApi()
+
+export type AttachmentItem = { publicId: string; filename: string; uploadedAt: string }
+
+type ListResponse = {
+  next: string | null
+  results: { public_id: string; original_filename: string; uploaded_at: string }[]
+}
+
+export type AttachmentPage = { items: AttachmentItem[]; nextCursor: string | null }
+
+export async function listAttachments(cursor: string | null): Promise<AttachmentPage> {
+  const { data } = await api.get<ListResponse>('/attachments', { params: cursor ? { cursor } : {} })
+  return {
+    items: data.results.map((r) => ({
+      publicId: r.public_id,
+      filename: r.original_filename,
+      uploadedAt: r.uploaded_at,
+    })),
+    nextCursor: data.next ? new URL(data.next).searchParams.get('cursor') : null,
+  }
+}
+
+export async function deleteAttachment(publicId: string): Promise<void> {
+  await api.delete(`/attachments/${publicId}`)
+}

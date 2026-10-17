@@ -23,8 +23,8 @@ function labelOf(e: Entry) {
   return e.status === 'failed' && e.retryable ? '실패(다시 시도 가능)' : STATUS_LABEL[e.status]
 }
 
-export function UploadPanel() {
-  const { entries, rejected, select, canRetry, retry, canCancel, cancelAll } = useUploader()
+export function UploadPanel({ onCompleted }: { onCompleted?: () => void }) {
+  const { entries, rejected, select, canRetry, retry, canCancel, cancelAll } = useUploader(onCompleted)
 
   return (
     <div>

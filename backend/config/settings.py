@@ -114,6 +114,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "attachments.exception_handler.handle_exception",
     "DEFAULT_THROTTLE_RATES": {"presign": "60/hour"},
 }

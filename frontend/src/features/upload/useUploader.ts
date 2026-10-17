@@ -10,7 +10,7 @@ import {
 import { createRunner } from '../../upload/runner'
 import { type RejectReason, validateFile } from '../../upload/validation'
 
-function buildRunner(reactDispatch: (a: QueueAction) => void) {
+function buildRunner(reactDispatch: (a: QueueAction) => void, onCompleted?: () => void) {
   let state: QueueState = []
   let seq = 0
   return createRunner({
@@ -19,6 +19,7 @@ function buildRunner(reactDispatch: (a: QueueAction) => void) {
     dispatch: (action) => {
       state = queueReducer(state, action)
       reactDispatch(action)
+      if (action.type === 'completed') onCompleted?.()
     },
     getEntry: (clientRef) => state.find((e) => e.clientRef === clientRef),
     nextRef: () => `f${++seq}`,
@@ -27,10 +28,10 @@ function buildRunner(reactDispatch: (a: QueueAction) => void) {
   })
 }
 
-export function useUploader() {
+export function useUploader(onCompleted?: () => void) {
   const [entries, reactDispatch] = useReducer(queueReducer, [])
   const [rejected, setRejected] = useState<{ name: string; reason: RejectReason }[]>([])
-  const [runner] = useState(() => buildRunner(reactDispatch))
+  const [runner] = useState(() => buildRunner(reactDispatch, onCompleted))
 
   useEffect(() => () => runner.cancelAll(), [runner])
 

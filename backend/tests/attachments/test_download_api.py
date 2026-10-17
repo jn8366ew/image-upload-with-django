@@ -116,3 +116,12 @@ def test_download_response_has_no_redirect_or_s3_url(api, stored, gateway):
     exposed += b"".join(response.streaming_content).decode("latin-1")
     for leaked in (att.s3_key, gateway.bucket, "amazonaws.com"):
         assert leaked not in exposed
+
+
+def test_download_error_is_json_for_browser_request(api, stored):
+    att = stored(deleted_at=timezone.now())
+
+    response = api.get(download_url(att.public_id), HTTP_ACCEPT="text/html,*/*;q=0.8")
+
+    assert response.status_code == 404
+    assert response["Content-Type"] == "application/json"

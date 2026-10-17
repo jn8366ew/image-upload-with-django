@@ -224,6 +224,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_download_missing_object_returns_404_and_logs_warning`
 - [x] `test_download_storage_auth_error_returns_500` (2026-10-14 추가, ADR-008 요청 경로 원칙)
 - [x] `test_download_response_has_no_redirect_or_s3_url`: 3xx 아님, 헤더·본문에 S3 도메인 없음. 보안 가드(ADR-010)
+- [x] `test_download_error_is_json_for_browser_request`: 브라우저(`Accept: text/html`)로 열어도 오류가 DRF Browsable API HTML이 아니라 JSON. 1-F 수동 확인에서 발견 (2026-10-17 추가)
 - [x] Refactor 체크포인트
 
 ### 1-8. `DELETE /api/attachments/{public_id}` (소프트 삭제)
@@ -500,11 +501,12 @@ API 래퍼 `src/api/attachments.ts`는 실행기 계약(오류는 `UploadError`,
 
 ### 1-17. 내 목록·다운로드·삭제
 
-- [ ] `list renders public fields only`
-- [ ] `download calls download endpoint, never an s3 url`
-- [ ] `delete removes item from list immediately`: 쿼리 무효화
-- [ ] `completed upload appears in list`: complete 성공 시 목록 쿼리 무효화 (2026-10-17 추가)
-- [ ] Refactor 체크포인트
+- [x] `list shows filename and upload time`: 공개 필드만 내려오므로 "only"는 화면 테스트로 검증할 수 없어 이름 변경(2026-10-17). 시간은 `timeZone: 'UTC'` 주입
+- [x] `load more fetches next page`: 커서 다음 페이지를 "더 보기"로 불러옴 (2026-10-17 추가)
+- [x] `download calls download endpoint, never an s3 url`: 일반 링크 + `target="_blank"`(ADR-012 화면)
+- [x] `delete removes item from list immediately`: 낙관적 삭제. 응답 전에 사라지는지 단언(ADR-005 삭제 API 화면)
+- [x] `upload panel calls onCompleted for each completed file`: 업로드 hook은 목록 쿼리를 모르고 콜백만 부름. 무효화 연결은 화면에서 하고 수동 확인 (2026-10-17 추가)
+- [x] Refactor 체크포인트: 삭제 hook의 상태 코드 추출·안내 문구 상수화. 삭제 실패 복원(403·5xx)과 403 무효화는 테스트 없이 구현(합의)
 
 ### 1-17a. 내 통계 화면: 기각 (2026-10-16)
 
@@ -516,6 +518,8 @@ API 래퍼 `src/api/attachments.ts`는 실행기 계약(오류는 `UploadError`,
 - 업로드 중 파일별 진행률 바가 실제 S3 전송에서 움직임(자동 테스트는 MSW의 즉시 완료 이벤트만 봄)
 - 전체 취소 시 네트워크 탭에서 진행 중이던 S3 요청이 canceled로 표시됨(MSW는 XHR 중단을 핸들러로 전달하지 않음)
 - 개발 서버(StrictMode)에서 업로드·취소가 정상 동작함(언마운트 시 취소 처리와 두 번 마운트 확인)
+- 업로드가 끝나면 내 목록에 나타남(onCompleted → 목록 무효화 연결)
+- 삭제된 첨부를 다운로드하면 새 탭에 JSON 오류가 보임(수용, ADR-012 화면)
 - Vite proxy 경유 로그인·업로드가 `Origin checking failed` 403 없이 동작함(`CSRF_TRUSTED_ORIGINS`, ADR-007)
 
 ---

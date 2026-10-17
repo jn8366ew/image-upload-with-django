@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithClient } from '../../test/render'
 import { MAX_FILE_SIZE } from '../../upload/validation'
 import { server } from '../../test/server'
@@ -118,5 +118,15 @@ describe('UploadPanel', () => {
     expect(within(screen.getByRole('list', { name: '업로드 목록' })).queryByText('big.png')).toBeNull()
     await new Promise((r) => setTimeout(r, 50))
     expect(presignedNames).toEqual([])
+  })
+
+  it('upload panel calls onCompleted for each completed file', async () => {
+    uploadHandlers()
+    const onCompleted = vi.fn()
+    renderWithClient(<UploadPanel onCompleted={onCompleted} />)
+
+    await select([png('a.png'), png('b.png')])
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(2))
   })
 })
