@@ -34,7 +34,7 @@ const PRESIGN_BATCH = 10
 const CONCURRENCY = 3
 
 function statusOf(error: unknown) {
-  return error instanceof UploadError ? error.status : undefined
+  return (error as UploadError).status
 }
 
 function isFinished(status: Status) {
@@ -44,6 +44,7 @@ function isFinished(status: Status) {
 export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }: RunnerDeps) {
   let controller = new AbortController()
   const clientRefs: string[] = []
+  let chain = Promise.resolve()
 
   async function step(
     signal: AbortSignal,
@@ -106,7 +107,33 @@ export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }
     }
   }
 
+  async function run(signal: AbortSignal, files: { clientRef: string; file: File }[]) {
+    for (let i = 0; i < files.length; i += PRESIGN_BATCH) {
+      if (signal.aborted) return
+      const batch = files.slice(i, i + PRESIGN_BATCH)
+      await presignBatch(batch)
+      await runPool(
+        batch.map(({ clientRef, file }) => () => process(signal, clientRef, file)),
+        CONCURRENCY,
+      )
+    }
+  }
+
+  function enqueue(files: { clientRef: string; file: File }[]) {
+    if (controller.signal.aborted) controller = new AbortController()
+    const { signal } = controller
+    chain = chain.then(() => run(signal, files))
+    return chain
+  }
+
   return {
+    retry(): Promise<void> {
+      const requeued = clientRefs
+        .map((clientRef) => getEntry(clientRef)!)
+        .filter((e) => e.status === 'failed' && e.retryable)
+      dispatch({ type: 'retry_requested' })
+      return enqueue(requeued.map(({ clientRef, file }) => ({ clientRef, file })))
+    },
     cancelAll(): void {
       controller.abort()
       for (const clientRef of clientRefs) {
@@ -115,21 +142,11 @@ export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }
         }
       }
     },
-    async add(files: File[]): Promise<void> {
-      if (controller.signal.aborted) controller = new AbortController()
-      const { signal } = controller
+    add(files: File[]): Promise<void> {
       const added = files.map((file) => ({ clientRef: nextRef(), file }))
       dispatch({ type: 'added', files: added })
       clientRefs.push(...added.map((f) => f.clientRef))
-      for (let i = 0; i < added.length; i += PRESIGN_BATCH) {
-        if (signal.aborted) return
-        const batch = added.slice(i, i + PRESIGN_BATCH)
-        await presignBatch(batch)
-        await runPool(
-          batch.map(({ clientRef, file }) => () => process(signal, clientRef, file)),
-          CONCURRENCY,
-        )
-      }
+      return enqueue(added)
     },
   }
 }

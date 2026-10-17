@@ -128,6 +128,7 @@ sequenceDiagram
   - 취소는 전송 중단일 뿐입니다. S3에 이미 도달한 파일(complete 미호출)은 24시간 배치가 검증해 `COMPLETED`로 확정할 수 있습니다(ADR-003 상태 전이 4). 사용자는 목록에서 삭제합니다.
 - **업로드 실행기 (2026-10-17 결정):** presign 배치(10개), 동시성 풀, backoff 대기, 403 재발급, 취소는 React·axios에 의존하지 않는 실행기가 맡습니다. api(`presign`·`upload`·`complete`)·`dispatch`·`getEntry`·`sleep`·`random`을 주입받고, 다음 행동은 dispatch 뒤 reducer가 계산한 상태로 정합니다(오류 분류는 reducer 한 곳).
 - **S3 업로드 요청:** `/api` 인스턴스가 아닌 별도 axios 호출로 보내고 `withCredentials: false`를 명시합니다. CSRF 헤더가 실리면 S3 CORS preflight가 거부합니다. FormData는 presign 필드 뒤에 `file`을 마지막으로 넣습니다(S3는 file 뒤의 필드를 무시).
+- **`add()`·`retry()`는 직렬 실행합니다(2026-10-17 결정).** 실행기는 호출을 promise 체인으로 줄 세워 동시 업로드 3개를 넘지 않게 합니다. 업로드 중에 고른 파일은 앞선 묶음이 끝난 뒤 시작합니다. 동적 풀은 미결입니다.
 - **`client_ref`:** UUID일 필요가 없어 주입받는 단순 증가 ID 생성기를 씁니다(브라우저·테스트 환경의 `crypto` 의존 제거).
 - **업로드 HTTP는 XHR 기반(axios `onUploadProgress`)을 씁니다.** 진행률이 필요하기 때문입니다.
 - **boto3 클라이언트는 `region_name`, `signature_version="s3v4"`, `s3={"addressing_style": "virtual"}`을 명시합니다.** 빠지면 presigned POST URL이 전역 엔드포인트(`<bucket>.s3.amazonaws.com`)로 생성되고, S3가 307 리다이렉트를 돌려주며, 브라우저가 CORS 요청에서 이를 따라가지 못해 업로드가 깨집니다.
@@ -1167,6 +1168,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - [x] presign 한도: 요청당 최대 10개, 사용자별 60회/시간으로 확정(2026-10-13). ADR-001·006 반영.
 - [ ] S3 403 원인 구분: 응답 XML의 `<Message>`로 만료(`Policy expired`)와 정책 위반(`Policy Condition failed`)을 나눠 후자를 첫 403에서 fatal로 보낼지. MVP는 횟수 상한만 둡니다. 근거 본문은 0-3 `test_s3_rejects_expired_post`, `test_s3_rejects_mismatched_content_type`가 단언합니다.
 - [ ] 파일별 업로드 취소: MVP는 전체 취소 하나입니다(ADR-001).
+- [ ] 업로드 동적 풀: 지금은 `add()`·`retry()`를 직렬 실행합니다(ADR-001). 대량 업로드에서 묶음 사이 대기가 문제되면 worker가 큐에서 꺼내는 풀로 바꿉니다.
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지
 - [ ] 로그인 성공·실패도 보안 이벤트로 기록할지

@@ -455,6 +455,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `unclassified 4xx moves to fatal failed, 429 to retryable`: 404·413 fatal, 429 retryable, 시도 횟수 미사용 (2026-10-16 추가)
 - [x] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
 - [x] `cancel moves uploading file to cancelled`
+- [x] `terminal states ignore further actions`: `done`·`cancelled`·fatal `failed`에 상태를 바꾸는 액션만 파라미터로 둡니다. retryable `failed`는 `retry_requested`를 받아야 해서 제외 (2026-10-17 추가)
 - [x] `retry_requested requeues only retryable failed`: 시도 횟수 0, presign 비움(ADR-001) (2026-10-17 추가)
 - [x] Refactor 체크포인트: 오류 분류를 `classify()`로 추출, 모든 전이가 `update` 헬퍼 경유(문장·분기 커버리지 100%), 테스트 준비를 `at(stage)`로 통합
 
@@ -476,8 +477,10 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `stops on fatal failure without further calls`: presign 400이면 배치 전체 fatal, 업로드·complete·대기 없음
 - [x] `cancel aborts in-flight and skips not-yet-started files`
 - [x] `cancel stops later presign batches and keeps done files`: 10개 초과 시 취소 뒤 다음 배치를 presign하지 않음 (2026-10-17 추가, Refactor 중 발견)
+- [x] `adding files during upload keeps concurrency limit`: `add()`·`retry()` 직렬 실행(ADR-001) (2026-10-17 추가)
+- [x] `retry runs only requeued files`: reducer `retry_requested`로 `queued`가 된 파일만 다시 돌림 (2026-10-17 추가)
 - [x] `add after cancel uploads normally`: 취소 뒤 새로 고른 파일이 중단된 signal을 물려받지 않음 (2026-10-17 추가, 구현 중 발견)
-- [x] Refactor 체크포인트: add마다 signal을 잡아 루프가 중단 시 종료(무한 루프 방지), `isFinished()` 추출, UploadError 메시지 고정
+- [x] Refactor 체크포인트: add마다 signal을 잡아 루프가 중단 시 종료(무한 루프 방지), `isFinished()` 추출, UploadError 메시지 고정. 보강(2026-10-17): `statusOf` 분기 제거(래퍼가 UploadError만 던진다는 계약, 1-16에서 검증), add·retry를 `enqueue()`로 공유. `isFinished()`는 retryable failed를 전체 취소에서 지키므로 유지
 
 ### 1-16. 업로드 화면 (React Testing Library + MSW)
 
@@ -501,6 +504,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 **Phase 1-F 게이트:** Vitest 전부 green. 실제 dev 버킷으로 다음 시나리오를 수동 확인합니다.
 - 다중 업로드 → 목록 → 다운로드 → 삭제
 - 브라우저 네트워크 탭에 S3 읽기 URL이 없음
+- 업로드 중 파일별 진행률 바가 실제로 움직임(MSW는 jsdom에서 진행률 이벤트를 내지 않을 수 있어 자동 테스트가 못 봄)
 - Vite proxy 경유 로그인·업로드가 `Origin checking failed` 403 없이 동작함(`CSRF_TRUSTED_ORIGINS`, ADR-007)
 
 ---

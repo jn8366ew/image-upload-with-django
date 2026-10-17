@@ -47,13 +47,17 @@ function classify(stage: Stage, status?: number): Outcome {
   return 'fatal'
 }
 
+function isTerminal(e: Entry) {
+  return e.status === 'done' || e.status === 'cancelled' || (e.status === 'failed' && !e.retryable)
+}
+
 function update(
   state: QueueState,
   clientRefs: string[],
   patch: Partial<Entry> | ((e: Entry) => Partial<Entry>),
 ): QueueState {
   return state.map((e) =>
-    clientRefs.includes(e.clientRef)
+    clientRefs.includes(e.clientRef) && !isTerminal(e)
       ? { ...e, ...(typeof patch === 'function' ? patch(e) : patch) }
       : e,
   )

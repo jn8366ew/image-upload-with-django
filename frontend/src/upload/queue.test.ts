@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type QueueState, type Stage, queueReducer } from './queue'
+import { type QueueAction, type QueueState, type Stage, queueReducer } from './queue'
 
 const file = new File(['x'], 'a.png', { type: 'image/png' })
 const presign = { publicId: 'p1', url: 'https://upload.test', fields: { key: 'k' } }
@@ -153,6 +153,37 @@ describe('queueReducer', () => {
     const state = queueReducer(at('upload'), { type: 'cancelled', clientRef: 'c1' })
 
     expect(state[0].status).toBe('cancelled')
+  })
+
+  describe('terminal states ignore further actions', () => {
+    const terminal: [string, () => QueueState][] = [
+      ['done', () => queueReducer(at('complete'), { type: 'completed', clientRef: 'c1' })],
+      ['cancelled', () => queueReducer(at('upload'), { type: 'cancelled', clientRef: 'c1' })],
+      [
+        'fatal failed',
+        () =>
+          queueReducer(at('presign'), { type: 'failed', clientRef: 'c1', stage: 'presign', status: 400 }),
+      ],
+    ]
+    const actions: QueueAction[] = [
+      { type: 'presign_started', clientRefs: ['c1'] },
+      { type: 'presigned', clientRef: 'c1', presign },
+      { type: 'progress', clientRef: 'c1', loaded: 1 },
+      { type: 'uploaded', clientRef: 'c1' },
+      { type: 'completed', clientRef: 'c1' },
+      { type: 'failed', clientRef: 'c1', stage: 'upload' },
+      { type: 'retry_due', clientRef: 'c1' },
+      { type: 'cancelled', clientRef: 'c1' },
+    ]
+
+    it.each(terminal.flatMap(([name, build]) => actions.map((a) => [name, a.type, build, a] as const)))(
+      '%s ignores %s',
+      (_name, _type, build, action) => {
+        const state = build()
+
+        expect(queueReducer(state, action)[0]).toBe(state[0])
+      },
+    )
   })
 
   it('retry_requested requeues only retryable failed', () => {
