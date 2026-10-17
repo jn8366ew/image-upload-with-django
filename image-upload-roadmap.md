@@ -455,6 +455,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `unclassified 4xx moves to fatal failed, 429 to retryable`: 404·413 fatal, 429 retryable, 시도 횟수 미사용 (2026-10-16 추가)
 - [x] `retry delay grows exponentially with full jitter`: 순수 함수, random 주입. 1초 기준 2배(ADR-001) (2026-10-16 추가)
 - [x] `cancel moves uploading file to cancelled`
+- [x] `retry_requested requeues only retryable failed`: 시도 횟수 0, presign 비움(ADR-001) (2026-10-17 추가)
 - [x] Refactor 체크포인트: 오류 분류를 `classify()`로 추출, 모든 전이가 `update` 헬퍼 경유(문장·분기 커버리지 100%), 테스트 준비를 `at(stage)`로 통합
 
 ### 1-15. 동시성 풀
@@ -464,11 +465,25 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `resolves after all tasks settle`: 입력 순서대로 PromiseSettledResult 반환
 - [x] Refactor 체크포인트: 변경 없음
 
+### 1-15b. 업로드 실행기 (2026-10-17 추가)
+
+`src/upload/runner.ts`. api·`dispatch`·`getEntry`·`sleep`·`random`·client_ref 생성기를 주입받는 순수 TS입니다(ADR-001). 1-16 RTL만으로는 backoff·403 경로가 실행되지 않아 추가했습니다. 동시성 상한·실패 격리는 1-15 `runPool`이 보장하므로 여기서 다시 테스트하지 않습니다.
+
+- [x] `presigns in batches of at most 10`
+- [x] `uploads then completes each file, reporting progress`: fake api가 onProgress를 호출합니다(MSW는 jsdom에서 업로드 진행률을 내지 않을 수 있음)
+- [x] `waits retry delay then resumes at failed stage`: `sleep`·`random` 주입
+- [x] `403 re-presigns only that file`
+- [x] `stops on fatal failure without further calls`: presign 400이면 배치 전체 fatal, 업로드·complete·대기 없음
+- [x] `cancel aborts in-flight and skips not-yet-started files`
+- [x] `cancel stops later presign batches and keeps done files`: 10개 초과 시 취소 뒤 다음 배치를 presign하지 않음 (2026-10-17 추가, Refactor 중 발견)
+- [x] `add after cancel uploads normally`: 취소 뒤 새로 고른 파일이 중단된 signal을 물려받지 않음 (2026-10-17 추가, 구현 중 발견)
+- [x] Refactor 체크포인트: add마다 signal을 잡아 루프가 중단 시 종료(무한 루프 방지), `isFinished()` 추출, UploadError 메시지 고정
+
 ### 1-16. 업로드 화면 (React Testing Library + MSW)
 
-- [ ] `selecting files shows per-file progress and done state`
+- [ ] `selecting files shows per-file progress and done state`: MSW가 jsdom에서 업로드 진행률을 내지 않으면 `selecting files uploads each and shows done state`로 이름을 바꿉니다(진행률은 1-15b가 검증)
 - [ ] `retry failed only resends failed files`
-- [ ] `cancel aborts in-flight uploads`
+- [ ] `cancel aborts in-flight uploads`: 전체 취소 버튼. 안내 문구에 "이미 전송된 파일은 목록에 나타날 수 있습니다" 취지 포함(ADR-001 취소)
 - [ ] `oversized file shows guidance message`: 사전 검증 거부 시 presign 호출 0회 단언 포함(1-13 단위 테스트는 거부 판정만 보장)
 - [ ] Refactor 체크포인트
 

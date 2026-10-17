@@ -154,4 +154,26 @@ describe('queueReducer', () => {
 
     expect(state[0].status).toBe('cancelled')
   })
+
+  it('retry_requested requeues only retryable failed', () => {
+    let state = queueReducer([], {
+      type: 'added',
+      files: [
+        { clientRef: 'c1', file },
+        { clientRef: 'c2', file },
+      ],
+    })
+    state = queueReducer(state, { type: 'presign_started', clientRefs: ['c1', 'c2'] })
+    state = queueReducer(state, { type: 'presigned', clientRef: 'c1', presign })
+    for (let i = 0; i < 5; i++) {
+      state = queueReducer(state, { type: 'failed', clientRef: 'c1', stage: 'upload' })
+    }
+    state = queueReducer(state, { type: 'failed', clientRef: 'c2', stage: 'presign', status: 400 })
+    const fatal = state[1]
+
+    state = queueReducer(state, { type: 'retry_requested' })
+
+    expect(state[0]).toMatchObject({ status: 'queued', attempt: 0, presign: undefined })
+    expect(state[1]).toBe(fatal)
+  })
 })

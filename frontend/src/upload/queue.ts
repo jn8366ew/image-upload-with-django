@@ -35,6 +35,7 @@ export type QueueAction =
   | { type: 'failed'; clientRef: string; stage: Stage; status?: number }
   | { type: 'retry_due'; clientRef: string }
   | { type: 'cancelled'; clientRef: string }
+  | { type: 'retry_requested' }
 
 const MAX_RETRIES = 4
 
@@ -100,5 +101,11 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return update(state, [action.clientRef], (e) => ({ status: resume(e) }))
     case 'cancelled':
       return update(state, [action.clientRef], { status: 'cancelled' })
+    case 'retry_requested':
+      return update(
+        state,
+        state.filter((e) => e.status === 'failed' && e.retryable).map((e) => e.clientRef),
+        { status: 'queued', attempt: 0, presign: undefined },
+      )
   }
 }
