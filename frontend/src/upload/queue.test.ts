@@ -112,6 +112,15 @@ describe('queueReducer', () => {
     expect(state[0]).toMatchObject({ status: 'failed', retryable: true })
   })
 
+  it.each(['presign', 'upload', 'complete'] as const)(
+    'timeout moves to retryable failed without retry (%s)',
+    (stage) => {
+      const state = queueReducer(at(stage), { type: 'failed', clientRef: 'c1', stage, timeout: true })
+
+      expect(state[0]).toMatchObject({ status: 'failed', retryable: true, attempt: 0 })
+    },
+  )
+
   it.each(['presign', 'complete'] as const)(
     'api 403 on presign or complete moves to fatal failed (%s)',
     (stage) => {

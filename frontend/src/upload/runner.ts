@@ -1,5 +1,5 @@
 import { runPool } from './pool'
-import type { Entry, Presign, QueueAction, Stage, Status } from './queue'
+import { type Entry, isFinished, isRetryable, type Presign, type QueueAction, type Stage } from './queue'
 import { retryDelay } from './retry'
 
 export type UploadApi = {
@@ -14,10 +14,12 @@ export type UploadApi = {
 
 export class UploadError extends Error {
   readonly status?: number
+  readonly timeout: boolean
 
-  constructor(status?: number) {
+  constructor(status?: number, timeout = false) {
     super('upload request failed')
     this.status = status
+    this.timeout = timeout
   }
 }
 
@@ -33,12 +35,9 @@ export type RunnerDeps = {
 const PRESIGN_BATCH = 10
 const CONCURRENCY = 3
 
-function statusOf(error: unknown) {
-  return (error as UploadError).status
-}
-
-function isFinished(status: Status) {
-  return status === 'done' || status === 'failed' || status === 'cancelled'
+function failure(error: unknown) {
+  const { status, timeout } = error as UploadError
+  return { status, timeout }
 }
 
 export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }: RunnerDeps) {
@@ -58,7 +57,7 @@ export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }
       dispatch(next)
     } catch (error) {
       if (signal.aborted) return
-      dispatch({ type: 'failed', clientRef, stage, status: statusOf(error) })
+      dispatch({ type: 'failed', clientRef, stage, ...failure(error) })
     }
   }
 
@@ -70,7 +69,7 @@ export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }
       }
     } catch (error) {
       for (const { clientRef } of batch) {
-        dispatch({ type: 'failed', clientRef, stage: 'presign', status: statusOf(error) })
+        dispatch({ type: 'failed', clientRef, stage: 'presign', ...failure(error) })
       }
     }
   }
@@ -130,14 +129,14 @@ export function createRunner({ api, dispatch, getEntry, nextRef, sleep, random }
     retry(): Promise<void> {
       const requeued = clientRefs
         .map((clientRef) => getEntry(clientRef)!)
-        .filter((e) => e.status === 'failed' && e.retryable)
+        .filter(isRetryable)
       dispatch({ type: 'retry_requested' })
       return enqueue(requeued.map(({ clientRef, file }) => ({ clientRef, file })))
     },
     cancelAll(): void {
       controller.abort()
       for (const clientRef of clientRefs) {
-        if (!isFinished(getEntry(clientRef)!.status)) {
+        if (!isFinished(getEntry(clientRef)!)) {
           dispatch({ type: 'cancelled', clientRef })
         }
       }

@@ -32,7 +32,7 @@ export type QueueAction =
   | { type: 'progress'; clientRef: string; loaded: number }
   | { type: 'uploaded'; clientRef: string }
   | { type: 'completed'; clientRef: string }
-  | { type: 'failed'; clientRef: string; stage: Stage; status?: number }
+  | { type: 'failed'; clientRef: string; stage: Stage; status?: number; timeout?: boolean }
   | { type: 'retry_due'; clientRef: string }
   | { type: 'cancelled'; clientRef: string }
   | { type: 'retry_requested' }
@@ -41,14 +41,23 @@ const MAX_RETRIES = 4
 
 type Outcome = 'backoff' | 'retryable' | 'fatal'
 
-function classify(stage: Stage, status?: number): Outcome {
+function classify(stage: Stage, status?: number, timeout?: boolean): Outcome {
+  if (timeout) return 'retryable'
   if (status === 409 || status === 429) return 'retryable'
   if (!status || status >= 500 || (status === 403 && stage === 'upload')) return 'backoff'
   return 'fatal'
 }
 
+export function isFinished(e: Entry) {
+  return e.status === 'done' || e.status === 'failed' || e.status === 'cancelled'
+}
+
+export function isRetryable(e: Entry) {
+  return e.status === 'failed' && e.retryable === true
+}
+
 function isTerminal(e: Entry) {
-  return e.status === 'done' || e.status === 'cancelled' || (e.status === 'failed' && !e.retryable)
+  return isFinished(e) && !isRetryable(e)
 }
 
 function update(
@@ -63,8 +72,8 @@ function update(
   )
 }
 
-function fail(e: Entry, stage: Stage, status?: number): Partial<Entry> {
-  const outcome = classify(stage, status)
+function fail(e: Entry, stage: Stage, status?: number, timeout?: boolean): Partial<Entry> {
+  const outcome = classify(stage, status, timeout)
   if (outcome === 'fatal') return { status: 'failed', retryable: false }
   if (outcome === 'retryable' || e.attempt >= MAX_RETRIES) {
     return { status: 'failed', retryable: true }
@@ -100,7 +109,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
     case 'completed':
       return update(state, [action.clientRef], { status: 'done' })
     case 'failed':
-      return update(state, [action.clientRef], (e) => fail(e, action.stage, action.status))
+      return update(state, [action.clientRef], (e) => fail(e, action.stage, action.status, action.timeout))
     case 'retry_due':
       return update(state, [action.clientRef], (e) => ({ status: resume(e) }))
     case 'cancelled':
@@ -108,7 +117,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
     case 'retry_requested':
       return update(
         state,
-        state.filter((e) => e.status === 'failed' && e.retryable).map((e) => e.clientRef),
+        state.filter(isRetryable).map((e) => e.clientRef),
         { status: 'queued', attempt: 0, presign: undefined },
       )
   }

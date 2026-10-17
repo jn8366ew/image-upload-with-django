@@ -1,6 +1,7 @@
 import { LoginForm } from './auth/LoginForm'
 import { useLogout } from './auth/useLogout'
 import { useSession } from './auth/useSession'
+import { UploadPanel } from './features/upload/UploadPanel'
 
 function App() {
   const { user, isPending, setUser } = useSession()
@@ -16,6 +17,7 @@ function App() {
           <button type="button" onClick={logout} disabled={isLoggingOut}>
             로그아웃
           </button>
+          <UploadPanel />
         </section>
       ) : (
         <LoginForm onLoggedIn={setUser} />

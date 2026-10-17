@@ -113,21 +113,25 @@ sequenceDiagram
   - **backoff:** 기준 1초, 2배씩 증가, full jitter(`random × 1000 × 2^(n-1)`ms, 4번째 최대 8초). reducer 밖 순수 함수로 계산하고, reducer는 시도 횟수와 `backoff` 상태만 다룹니다.
   - **단계별 적용:**
 
-    | 단계 | 5xx·네트워크 | 400 | 403 | 409 |
-    | --- | --- | --- | --- | --- |
-    | presign | backoff 후 presign만 재시도 | fatal(규칙 위반) | fatal(세션·CSRF) | — |
-    | S3 업로드 | backoff 후 재업로드 | fatal | presign 재발급 | — |
-    | complete | backoff 후 complete만 재시도 | fatal(`invalid_format`) | fatal | retryable failed(사용자 "다시 시도"로 `queued` 복귀, presign부터). 원인을 알 수 없어 자동 재업로드하지 않음(ADR-003) |
+    | 단계 | 5xx·네트워크 | 타임아웃 | 400 | 403 | 409 |
+    | --- | --- | --- | --- | --- | --- |
+    | presign | backoff 후 presign만 재시도 | retryable failed(재시도 없음) | fatal(규칙 위반) | fatal(세션·CSRF) | — |
+    | S3 업로드 | backoff 후 재업로드 | retryable failed(재시도 없음) | fatal | presign 재발급 | — |
+    | complete | backoff 후 complete만 재시도 | retryable failed(재시도 없음) | fatal(`invalid_format`) | fatal | retryable failed(사용자 "다시 시도"로 `queued` 복귀, presign부터). 원인을 알 수 없어 자동 재업로드하지 않음(ADR-003) |
 
     표에 없는 status: 429(presign 시간당 한도)는 retryable failed, 404·그 밖의 4xx는 fatal입니다(모르는 오류를 자동 반복하지 않음). presign 400은 배치 전체가 거절되므로(위 presign 배치 결정), 프론트 사전 검증이 서버 규칙(개수·MIME·크기·파일명)을 모두 미리 거릅니다. 그래도 400이 오면 그 배치의 파일이 전부 fatal입니다.
 
   - **`backoff` 상태 (2026-10-16):** 403을 포함한 모든 자동 재시도는 `backoff`를 거칩니다. 정책 위반 403도 재발급 경로를 타므로, 즉시 재시도하면 S3에 연속 요청을 보내기 때문입니다. 대기가 끝나면 실패한 단계로 돌아갑니다: 403은 presign을 비우고 `queued`(배치 presign 입구), 업로드 5xx는 `uploading`, complete 5xx는 `confirming`.
-  - **네트워크 오류:** 응답 status가 없거나 0이면 네트워크 오류로 봅니다(XHR timeout 포함).
+  - **네트워크 오류:** 응답 status가 없거나 0이면 네트워크 오류로 봅니다(접속 실패·끊김). 타임아웃은 포함하지 않습니다.
+  - **타임아웃 (2026-10-17 결정):** S3 업로드 30초, API 호출(presign·complete) 15초입니다. 타임아웃은 재시도하지 않고 바로 retryable failed로 둡니다. 래퍼가 `AbortSignal.timeout`과 호출자 signal을 `AbortSignal.any`로 합쳐 요청을 끊고, 타임아웃 signal로 끊긴 경우만 `UploadError`의 타임아웃 표시로 바꿉니다(호출자 취소는 원래 오류 그대로). axios `timeout` 옵션은 쓰지 않습니다. MSW는 XHR timeout을 구현하지 않아 테스트로 검증할 수 없었습니다(2026-10-17 실측).
+    - 지원 브라우저는 Chrome·Edge·Safari 최신 버전입니다. `AbortSignal.any`는 2024년 3월부터 Baseline입니다(MDN `AbortSignal.any()`).
+    - 타임아웃은 직렬 체인이 막히는 상한입니다. 응답 없는 파일은 30초 후 실패 처리되어 체인을 풉니다. 배치 전체로는 최악 약 2분입니다. 사용자는 전체 취소로 즉시 해제할 수 있습니다.
+    - 느린 회선 상한은 약 0.7Mbps입니다(2.5MiB 기준). 동적 풀 미결 항목의 근거입니다.
   - **사용자 "다시 시도":** retryable failed인 파일만 `queued`로 되돌리고 시도 횟수를 0으로 초기화하며 presign을 비웁니다. 버튼 하나가 대상 파일 전체에 적용됩니다.
 - **취소 (2026-10-17 결정):** "전체 취소" 버튼 하나입니다. 끝나지 않은 파일(대기·presign·업로드·complete·backoff)을 모두 `cancelled`로 만들고, 진행 중인 요청은 AbortController로 중단합니다. presign 응답 전에 취소했으면 응답을 받아도 업로드를 시작하지 않습니다. 취소한 파일은 "다시 시도" 대상이 아닙니다.
   - 취소는 전송 중단일 뿐입니다. S3에 이미 도달한 파일(complete 미호출)은 24시간 배치가 검증해 `COMPLETED`로 확정할 수 있습니다(ADR-003 상태 전이 4). 사용자는 목록에서 삭제합니다.
 - **업로드 실행기 (2026-10-17 결정):** presign 배치(10개), 동시성 풀, backoff 대기, 403 재발급, 취소는 React·axios에 의존하지 않는 실행기가 맡습니다. api(`presign`·`upload`·`complete`)·`dispatch`·`getEntry`·`sleep`·`random`을 주입받고, 다음 행동은 dispatch 뒤 reducer가 계산한 상태로 정합니다(오류 분류는 reducer 한 곳).
-- **S3 업로드 요청:** `/api` 인스턴스가 아닌 별도 axios 호출로 보내고 `withCredentials: false`를 명시합니다. CSRF 헤더가 실리면 S3 CORS preflight가 거부합니다. FormData는 presign 필드 뒤에 `file`을 마지막으로 넣습니다(S3는 file 뒤의 필드를 무시).
+- **S3 업로드 요청:** `/api` 인스턴스가 아닌 별도 axios 호출로 보내고 `withCredentials: false`를 명시합니다. CSRF 헤더가 실리면 S3 CORS preflight가 거부합니다. FormData는 presign 필드 뒤에 `file`을 마지막으로 넣습니다(S3는 file 뒤의 필드를 무시). 진행률은 `event.progress × 파일 크기`로 환산합니다. axios `event.loaded`는 multipart 본문 전체(필드·경계 포함) 바이트라 파일 크기를 넘습니다(2026-10-17 확인).
 - **`add()`·`retry()`는 직렬 실행합니다(2026-10-17 결정).** 실행기는 호출을 promise 체인으로 줄 세워 동시 업로드 3개를 넘지 않게 합니다. 업로드 중에 고른 파일은 앞선 묶음이 끝난 뒤 시작합니다. 동적 풀은 미결입니다.
 - **`client_ref`:** UUID일 필요가 없어 주입받는 단순 증가 ID 생성기를 씁니다(브라우저·테스트 환경의 `crypto` 의존 제거).
 - **업로드 HTTP는 XHR 기반(axios `onUploadProgress`)을 씁니다.** 진행률이 필요하기 때문입니다.
@@ -1168,7 +1172,7 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 - [x] presign 한도: 요청당 최대 10개, 사용자별 60회/시간으로 확정(2026-10-13). ADR-001·006 반영.
 - [ ] S3 403 원인 구분: 응답 XML의 `<Message>`로 만료(`Policy expired`)와 정책 위반(`Policy Condition failed`)을 나눠 후자를 첫 403에서 fatal로 보낼지. MVP는 횟수 상한만 둡니다. 근거 본문은 0-3 `test_s3_rejects_expired_post`, `test_s3_rejects_mismatched_content_type`가 단언합니다.
 - [ ] 파일별 업로드 취소: MVP는 전체 취소 하나입니다(ADR-001).
-- [ ] 업로드 동적 풀: 지금은 `add()`·`retry()`를 직렬 실행합니다(ADR-001). 대량 업로드에서 묶음 사이 대기가 문제되면 worker가 큐에서 꺼내는 풀로 바꿉니다.
+- [ ] 업로드 동적 풀: 지금은 `add()`·`retry()`를 직렬 실행합니다(ADR-001). 대량 업로드에서 묶음 사이 대기가 문제되면 worker가 큐에서 꺼내는 풀로 바꿉니다. 지금은 응답 없는 파일이 타임아웃(S3 30초)까지 체인을 막습니다(ADR-001 타임아웃).
 - [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
 - [ ] 화면의 시간 표시: UTC 그대로 보여줄지, 브라우저에서 KST로 변환할지
 - [ ] 로그인 성공·실패도 보안 이벤트로 기록할지

@@ -236,6 +236,19 @@ describe('runner', () => {
     expect(statuses()).toEqual(['done', 'done'])
   })
 
+  it('timeout fails file without waiting', async () => {
+    const { runner, sleeps, statuses } = harness({
+      upload: async () => {
+        throw new UploadError(undefined, true)
+      },
+    })
+
+    await runner.add([png('a.png')])
+
+    expect(statuses()).toEqual(['failed'])
+    expect(sleeps).toEqual([])
+  })
+
   it('add after cancel uploads normally', async () => {
     const { runner, statuses } = harness({
       upload: async (_presign, _file, { signal }) => {

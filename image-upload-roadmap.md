@@ -450,6 +450,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `409 on complete moves to retryable failed`: 재업로드 필요(ADR-003)
 - [x] `network error retries with backoff up to 4 times`: status 없음·0·500·503, presign 유지(403과 다름)
 - [x] `exhausted retries move to retryable failed`: 403과 네트워크·5xx를 섞어 합산 확인, 5번째 실패에서 전이
+- [x] `timeout moves to retryable failed without retry`: 세 단계 파라미터, 시도 횟수 미사용(ADR-001 타임아웃) (2026-10-17 추가)
 - [x] `api 403 on presign or complete moves to fatal failed`: 세션·CSRF 문제 (2026-10-16 추가)
 - [x] `backoff resumes at failed stage`: 403 → `queued`, 업로드 5xx → `uploading`, complete 5xx → `confirming` (2026-10-16 추가)
 - [x] `unclassified 4xx moves to fatal failed, 429 to retryable`: 404·413 fatal, 429 retryable, 시도 횟수 미사용 (2026-10-16 추가)
@@ -479,22 +480,30 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `cancel stops later presign batches and keeps done files`: 10개 초과 시 취소 뒤 다음 배치를 presign하지 않음 (2026-10-17 추가, Refactor 중 발견)
 - [x] `adding files during upload keeps concurrency limit`: `add()`·`retry()` 직렬 실행(ADR-001) (2026-10-17 추가)
 - [x] `retry runs only requeued files`: reducer `retry_requested`로 `queued`가 된 파일만 다시 돌림 (2026-10-17 추가)
+- [x] `timeout fails file without waiting`: 타임아웃 표시를 `failed` 액션에 실어 보내고 sleep을 호출하지 않음. 래퍼·reducer 사이에서 표시가 빠지지 않는지 검증 (2026-10-17 추가)
 - [x] `add after cancel uploads normally`: 취소 뒤 새로 고른 파일이 중단된 signal을 물려받지 않음 (2026-10-17 추가, 구현 중 발견)
 - [x] Refactor 체크포인트: add마다 signal을 잡아 루프가 중단 시 종료(무한 루프 방지), `isFinished()` 추출, UploadError 메시지 고정. 보강(2026-10-17): `statusOf` 분기 제거(래퍼가 UploadError만 던진다는 계약, 1-16에서 검증), add·retry를 `enqueue()`로 공유. `isFinished()`는 retryable failed를 전체 취소에서 지키므로 유지
 
 ### 1-16. 업로드 화면 (React Testing Library + MSW)
 
-- [ ] `selecting files shows per-file progress and done state`: MSW가 jsdom에서 업로드 진행률을 내지 않으면 `selecting files uploads each and shows done state`로 이름을 바꿉니다(진행률은 1-15b가 검증)
-- [ ] `retry failed only resends failed files`
-- [ ] `cancel aborts in-flight uploads`: 전체 취소 버튼. 안내 문구에 "이미 전송된 파일은 목록에 나타날 수 있습니다" 취지 포함(ADR-001 취소)
-- [ ] `oversized file shows guidance message`: 사전 검증 거부 시 presign 호출 0회 단언 포함(1-13 단위 테스트는 거부 판정만 보장)
-- [ ] Refactor 체크포인트
+API 래퍼 `src/api/attachments.ts`는 실행기 계약(오류는 `UploadError`, abort는 그대로)을 지켜야 합니다. 실행기 `statusOf`가 이 계약에 기대므로 MSW로 먼저 검증합니다(2026-10-17 추가).
+
+- [x] `wrapper converts 4xx and 5xx responses to UploadError with status`: presign·S3 업로드·complete 세 함수 파라미터
+- [x] `wrapper converts network error to UploadError without status`
+- [x] `wrapper rethrows abort without converting`: `UploadError`가 아님 + `signal.aborted`. axios `CanceledError` 타입은 단언하지 않음(내부 구현 비의존)
+- [x] `wrapper marks timeout on UploadError`: MSW `delay('infinite')` + 짧은 timeout (2026-10-17 추가). axios timeout은 MSW에서 발동하지 않아 signal 방식으로 구현
+- [x] `selecting files shows per-file progress and done state`: MSW는 jsdom에서도 업로드 진행률 이벤트를 냅니다(2026-10-17 확인). axios `event.loaded`는 multipart 본문 전체 바이트라 래퍼가 `event.progress × 파일 크기`로 환산합니다
+- [x] `retry failed only resends failed files`: complete 409로 재시도 가능 실패를 만든 뒤 버튼, 두 번째 presign에 그 파일만
+- [x] `cancel all marks unfinished uploads cancelled and shows notice`: 전체 취소 버튼. 안내 문구에 "이미 전송된 파일은 목록에 나타날 수 있습니다" 취지 포함(ADR-001 취소). MSW는 XHR 중단을 핸들러 `request.signal`로 전달하지 않아(2026-10-17 확인) 요청 중단 자체는 1-15b 실행기·래퍼 abort 테스트가 맡습니다. 이름을 `cancel aborts in-flight uploads`에서 변경
+- [x] `oversized file shows guidance message`: 사전 검증 거부 시 presign 호출 0회 단언 포함(1-13 단위 테스트는 거부 판정만 보장)
+- [x] Refactor 체크포인트: `isFinished`·`isRetryable`을 `queue.ts`로 모아 reducer·실행기·hook이 공유. 실행기 상태 사본을 클로저 지역 변수로 옮겨 렌더 중 ref 접근 제거. 언마운트 시 `cancelAll()`(테스트 없음, StrictMode는 수동 확인)
 
 ### 1-17. 내 목록·다운로드·삭제
 
 - [ ] `list renders public fields only`
 - [ ] `download calls download endpoint, never an s3 url`
 - [ ] `delete removes item from list immediately`: 쿼리 무효화
+- [ ] `completed upload appears in list`: complete 성공 시 목록 쿼리 무효화 (2026-10-17 추가)
 - [ ] Refactor 체크포인트
 
 ### 1-17a. 내 통계 화면: 기각 (2026-10-16)
@@ -504,7 +513,9 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 **Phase 1-F 게이트:** Vitest 전부 green. 실제 dev 버킷으로 다음 시나리오를 수동 확인합니다.
 - 다중 업로드 → 목록 → 다운로드 → 삭제
 - 브라우저 네트워크 탭에 S3 읽기 URL이 없음
-- 업로드 중 파일별 진행률 바가 실제로 움직임(MSW는 jsdom에서 진행률 이벤트를 내지 않을 수 있어 자동 테스트가 못 봄)
+- 업로드 중 파일별 진행률 바가 실제 S3 전송에서 움직임(자동 테스트는 MSW의 즉시 완료 이벤트만 봄)
+- 전체 취소 시 네트워크 탭에서 진행 중이던 S3 요청이 canceled로 표시됨(MSW는 XHR 중단을 핸들러로 전달하지 않음)
+- 개발 서버(StrictMode)에서 업로드·취소가 정상 동작함(언마운트 시 취소 처리와 두 번 마운트 확인)
 - Vite proxy 경유 로그인·업로드가 `Origin checking failed` 403 없이 동작함(`CSRF_TRUSTED_ORIGINS`, ADR-007)
 
 ---
