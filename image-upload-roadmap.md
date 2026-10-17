@@ -522,6 +522,18 @@ API 래퍼 `src/api/attachments.ts`는 실행기 계약(오류는 `UploadError`,
 - 삭제된 첨부를 다운로드하면 새 탭에 JSON 오류가 보임(수용, ADR-012 화면)
 - Vite proxy 경유 로그인·업로드가 `Origin checking failed` 403 없이 동작함(`CSRF_TRUSTED_ORIGINS`, ADR-007)
 
+
+**1-F 게이트 결과 (2026-10-17, 사용자 수동 확인, Chrome 155):**
+- [x] 로그인: Vite proxy 경유 `csrf 204 → login 200`, `Origin checking failed` 없음
+- [x] 다중 업로드 14장: presign 2회(10+4), complete 14회 200, 진행률 바 애니메이션, 완료마다 목록 갱신
+- [x] 다운로드 200, 네트워크 탭에서 S3로는 POST만(GET 없음). S3 POST에 `cookie`·`x-csrftoken` 헤더 없음
+- [x] 삭제 204 후 목록에서 즉시 사라짐
+- [x] 삭제된 첨부 다운로드 404: DRF Browsable API HTML로 보이는 문제 발견 → `JSONRenderer` 고정으로 수정(1-7 `test_download_error_is_json_for_browser_request`)
+- [x] 크기 초과: 거부 목록에 안내, presign에 정상 파일만
+- [x] 전체 취소(Slow 4G): 진행 중 3건 `(canceled)`, 동시 3개 확인, 완료 파일은 유지, 취소 뒤 새 파일 정상 업로드(StrictMode 포함)
+- [x] 타임아웃(Slow 4G): S3 POST 3건 30.00초에 끊김, complete 없음, "실패(다시 시도 가능)", 다시 시도로 그 파일만 재업로드 완료. 2.1Mbps 미만 회선에서 큰 파일 여러 장 실패는 수용(ADR-001)
+- 참고: S3 응답 `x-amz-expiration`은 수명 주기 370일 규칙과 일치. Console의 CSP `eval` 경고는 앱이 CSP를 보내지 않으므로 외부(확장 프로그램 등) 출처로 추정
+
 ---
 
 ## 로컬 실행 절차 (MVP 운영 방식)
