@@ -4,7 +4,7 @@
 
 - **설계 근거:** [`image-upload-adr.md`](./image-upload-adr.md) (ADR-001~015)
 - **작업 순서·테스트 목록:** [`image-upload-roadmap.md`](./image-upload-roadmap.md) — 무엇을 구현할지는 이 문서의 체크박스가 단일 원천입니다.
-- **현재 단계:** 로드맵에서 미체크 항목이 남아 있는 첫 Phase입니다. 작업 시작 전 그 Phase 섹션만 읽습니다.
+- **현재 단계:** MVP 완료(2026-10-19). 로컬 전용 학습 MVP이며 배포·운영은 하지 않습니다(ADR-014). AWS 리소스는 삭제 예정입니다. 다시 작업한다면 로드맵에서 미체크 항목이 남아 있는 첫 Phase의 섹션만 읽습니다.
 - **영역별 규칙:** 백엔드 `.claude/rules/backend.md`, 프론트 `.claude/rules/frontend.md`. 해당 경로의 파일을 열 때 자동 로드되며, 파일을 열기 전에 계획을 세우는 경우에는 먼저 직접 읽습니다.
 
 ## 환경

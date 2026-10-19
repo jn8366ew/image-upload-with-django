@@ -12,7 +12,7 @@
 
 - **업로드:** 이미지 바이트는 Django를 거치지 않고 브라우저에서 S3로 직접 올라갑니다.
 - **다운로드:** 파일은 Django를 거쳐서만 내려갑니다. 클라이언트에는 S3 key도 URL도 노출하지 않습니다.
-- **실행 환경:** MVP는 로컬 개발 전용입니다. AWS에는 S3 버킷, 로컬 개발용 IAM, 비용 알림만 둡니다(ADR-014). 배포 관련 결정은 보류 상태입니다.
+- **실행 환경:** MVP는 로컬 개발 전용입니다. AWS에는 S3 버킷, 로컬 개발용 IAM, 비용 알림만 둡니다. 배포·운영은 하지 않습니다(ADR-014).
 
 ### MVP 원칙
 
@@ -32,13 +32,13 @@
 | 삭제·보존 | 사용자 소프트 삭제 → 30일 후 하드 삭제, 업로드 1년 후 하드 삭제, 운영 삭제는 command | 005 |
 | 보안 | 어디서든 접속 → 업로더 본인 인가 + 짧은 업로드 URL 만료 + Block Public Access + TLS 강제 | 006 |
 | 스택 | React+TS+Vite / Django 5.2 LTS+DRF / PostgreSQL, 세션 인증(same-origin) | 007 |
-| 배치 | `manage.py attachment_maintenance` 하나로 묶음. 로컬은 수동 실행, 스케줄러는 보류 | 008 |
-| 인프라 | Terraform으로 S3·IAM·Budgets만 관리, 배포 인프라는 보류 | 009 |
+| 배치 | `manage.py attachment_maintenance` 하나로 묶음. 수동 실행 | 008 |
+| 인프라 | Terraform으로 S3·IAM·Budgets만 관리 | 009 |
 | 테스트 | Red-Green-Refactor 강제, 테스트 없는 비즈니스 로직 금지, S3 계약 테스트 | 010 |
-| 컨테이너 | 로컬은 Postgres만 compose, 배포는 Django 이미지 하나 | 011 |
+| 컨테이너 | Postgres·MongoDB만 compose, Django·Vite는 호스트 실행 | 011 |
 | 파일 제공 | presigned GET 미사용, Django가 S3에서 읽어 스트리밍, key·URL 비노출 | 012 |
 | 활동 로그 | MongoDB에 이벤트 5종 + IP 기록, Postgres 아웃박스 → 릴레이, TTL 400일 | 013 |
-| 비용 | 로컬 개발 전용. AWS는 S3·IAM·Budgets만, 시간 과금 리소스 금지, 월 $1 미만 | 014 |
+| 비용·범위 | 로컬 전용 학습 MVP, 배포·운영 없음. AWS는 S3·IAM·Budgets만, 시간 과금 리소스 금지 | 014 |
 | 백엔드 계층 | views → services → selectors → storage·events → models, import-linter로 검사 | 015 |
 
 ### 전체 흐름
@@ -473,7 +473,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 | 주체 | 권한 |
 | --- | --- |
-| 앱(ECS 태스크 롤, 로컬은 dev IAM) | 버킷 prefix에 대한 `PutObject`(서명용), `GetObject`, `DeleteObject` + `s3:prefix`로 제한한 `ListBucket`(없는 객체에 403 대신 404를 받기 위함, 0-3 spike) |
+| 앱(로컬 dev IAM) | 버킷 prefix에 대한 `PutObject`(서명용), `GetObject`, `DeleteObject` + `s3:prefix`로 제한한 `ListBucket`(없는 객체에 403 대신 404를 받기 위함, 0-3 spike) |
 | 개발자 기본 계정 | 운영 버킷 `DeleteObject` 없음 |
 | break-glass 역할 | 콘솔 직접 삭제, 비상시에만 assume |
 
@@ -489,7 +489,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 ## ADR-007 기술 스택과 인증
 
 - **상태:** 승인
-- **보류된 부분:** CloudFront 배포 구성은 보류합니다(ADR-014). 로컬에서는 Vite proxy로 same-origin을 구성합니다.
+- **로컬 전용 확정(ADR-014):** Vite proxy로 same-origin을 구성합니다.
 
 ### 결정
 
@@ -516,7 +516,6 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 ### 인증 (same-origin)
 
 - **로컬:** Vite dev server의 proxy가 `/api`를 Django로 넘깁니다.
-- **배포:** CloudFront 하나에 origin 두 개를 둡니다. SPA는 S3, `/api/*`는 ALB입니다.
 - **효과:** 브라우저 입장에서 같은 도메인이라 세션 쿠키가 그대로 동작합니다. JWT, 토큰 갱신, 교차 origin 쿠키 문제를 피합니다.
 - **사용자 생성:** Django admin으로 만듭니다.
 
@@ -538,7 +537,7 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
   - `login()`은 세션 키와 CSRF 토큰을 교체합니다. 프론트는 토큰을 캐시하지 않고 매 요청 쿠키에서 읽습니다(axios `xsrfCookieName: "csrftoken"`, `xsrfHeaderName: "X-CSRFToken"`).
   - 로그아웃은 POST만 허용합니다. GET 로그아웃은 다른 사이트의 이미지 태그로 강제 로그아웃이 가능합니다.
   - Django 4+는 HTTP에서도 `Origin`을 검사합니다. Vite proxy를 거치면 `Origin`이 `http://localhost:5173`으로 남으므로 `CSRF_TRUSTED_ORIGINS`에 넣습니다(env, 기본값 `http://localhost:5173`). `APIClient` 테스트로는 잡히지 않아 1-F 수동 시나리오로 확인합니다.
-- **로그인 시도 제한:** MVP에서는 두지 않습니다(로컬 전용, ADR-014). 미결 사항 참고.
+- **로그인 시도 제한:** 두지 않습니다(로컬 전용, ADR-014).
 
 ### 고려한 대안
 
@@ -547,19 +546,17 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 | JWT + 교차 origin | 토큰 저장·갱신, CORS 자격 증명 설정이 늘어남 |
 | Uppy | multipart·이어올리기가 요구사항에서 빠져 불필요 |
 
-관측 도구(Datadog 또는 CloudWatch)는 배포 단계에서 정합니다.
-
 ---
 
-## ADR-008 배치 실행기: EventBridge Scheduler + ECS RunTask
+## ADR-008 배치 실행: `attachment_maintenance` 수동 실행
 
 - **상태:** 승인
-- **보류된 부분:** EventBridge Scheduler와 ECS RunTask는 보류합니다(ADR-014). 로컬에서는 `manage.py attachment_maintenance`를 수동으로 실행합니다. 필요하면 호스트 cron으로 돌립니다.
+- **로컬 전용 확정(ADR-014):** `manage.py attachment_maintenance`를 수동으로 실행합니다. 필요하면 호스트 cron으로 돌립니다.
+- **1년 자동 삭제는 이 배치를 실행해야 일어납니다.** 실행하지 않으면 DB 행은 남고, S3 객체는 lifecycle(370일)이 안전망으로 지웁니다.
 
 ### 결정
 
 - 주기 작업은 `manage.py attachment_maintenance` 하나로 묶습니다.
-- 배포 환경에서는 EventBridge Scheduler가 하루 1회 ECS RunTask로 실행합니다.
 - Celery는 쓰지 않습니다.
 
 ### 컨텍스트
@@ -609,37 +606,33 @@ S3 삭제가 실패해도 `DELETING` 행이 남아 있어서 다음 배치가 �
 
 - 배치에는 상시 프로세스와 브로커가 없습니다.
 - 이벤트 릴레이는 지연을 짧게 유지해야 하므로, ADR-013에서 별도 상시 프로세스로 둡니다.
-- 로컬에서는 같은 command를 수동으로 실행하므로, 개발과 운영의 코드 경로가 같습니다.
-- 태스크 기동에 수십 초가 걸리지만, 일일 배치라 무관합니다.
-- 실행 이력은 ECS·CloudWatch Logs에 남습니다.
+- 실행 이력은 명령 출력(결과 dataclass)뿐입니다.
 
 ---
 
 ## ADR-009 IaC: Terraform 단계적 도입
 
 - **상태:** 승인
-- **보류된 부분:** Phase 2·3은 보류합니다(ADR-014). 현재 Terraform 범위는 S3 버킷, 로컬 개발용 IAM, CI용 OIDC 역할, Budgets입니다.
+- **로컬 전용 확정(ADR-014):** Terraform 범위는 S3 버킷, 로컬 개발용 IAM, Budgets입니다.
 
 ### 결정
 
-AWS 리소스는 Terraform으로 정의합니다. 기능 개발에 필요한 S3·IAM부터 시작하고, 배포 인프라는 나중에 붙입니다.
+AWS 리소스는 Terraform으로 정의합니다. 범위는 기능 개발에 필요한 S3·IAM과 비용 알림(Budgets)입니다.
 
 ### 이유
 
-- **비용 통제:** ALB·RDS는 켜져 있는 동안 고정비가 나갑니다. 안 쓸 때 `terraform destroy`, 다시 쓸 때 `apply`로 몇 분 만에 재현합니다.
-- **보안 설정이 코드로 남습니다:** Block Public Access, TLS Deny, Versioning 꺼짐, Lifecycle 370일, break-glass 역할. ADR-005·006과 짝을 이룹니다.
+- **비용 통제:** 안 쓸 때 `terraform destroy`, 다시 쓸 때 `apply`로 몇 분 만에 재현합니다.
+- **보안 설정이 코드로 남습니다:** Block Public Access, TLS Deny, Versioning 꺼짐, Lifecycle 370일. ADR-005·006과 짝을 이룹니다.
 - **학습 비용이 낮습니다:** 이미 써본 도구입니다.
 
 | 단계 | Terraform 범위 | 앱 실행 위치 |
 | --- | --- | --- |
 | Phase 1 | S3 버킷(정책, CORS, Lifecycle, Versioning 꺼짐), 로컬 개발용 IAM | 로컬 Django + Vite + docker Postgres |
-| Phase 2 | VPC, RDS, ECR, ECS Fargate, ALB, ECS 태스크 롤 | AWS |
-| Phase 3 | CloudFront(SPA + `/api`), EventBridge Scheduler, break-glass 역할 | AWS |
 
 ### 검증
 
 - PR마다 `terraform validate`, `terraform test`, checkov를 돌려 위 보안 설정이 빠지지 않았는지 확인합니다.
-- state는 로컬 파일로 관리합니다(ADR-014). 배포 인프라를 추가할 때 S3 backend로 옮깁니다.
+- state는 로컬 파일로 관리합니다(ADR-014).
 
 ---
 
@@ -729,11 +722,11 @@ AWS 리소스는 Terraform으로 정의합니다. 기능 개발에 필요한 S3�
 | API | DRF `APIClient` | 인증·인가, 상태 코드, 응답 형태, key·URL 비노출 | 매 커밋 |
 | 어댑터 | moto | Range 헤더, `get_object` 스트림, 삭제 실패 시 예외 | 매 커밋 |
 | 이벤트 | 실제 MongoDB(mongomock 미사용) | 릴레이 멱등성, TTL·unique 인덱스, aggregation | 매 커밋 |
-| S3 계약 | 실제 dev 버킷, `@pytest.mark.s3` | 크기·타입 조건 강제, 만료 403, CORS preflight, 307 회귀 | 수동·nightly |
+| S3 계약 | 실제 dev 버킷, `@pytest.mark.s3` | 크기·타입 조건 강제, 만료 403, CORS preflight, 307 회귀 | 수동 |
 | 프론트 단위 | Vitest | 업로드 reducer, 동시성 풀, 사전 검증 | 매 커밋 |
 | 프론트 컴포넌트 | React Testing Library + MSW | 선택 → 진행률 → 완료, 실패분만 재시도 | 매 커밋 |
 | 인프라 | `terraform test`, checkov | 보안 설정 누락 | PR마다 |
-| E2E(선택) | Playwright | 해피 패스 1~2개 | Phase 3 |
+| E2E | 두지 않음 | 1-F 수동 게이트로 대신함 | |
 
 ### presign 정책 검증
 
@@ -747,41 +740,37 @@ presigned POST의 `policy` 필드를 base64로 디코딩해서 `content-length-r
   - Vitest
   - Terraform 검사
   - diff-cover 게이트
-- **수동·nightly:** `-m s3` 계약 테스트. OIDC로 dev 버킷 전용 역할을 assume합니다(장기 키 없음).
+- **수동:** `-m s3` 계약 테스트. 로컬 dev 프로파일로 실행합니다.
 
 ---
 
 ## ADR-011 컨테이너 전략: 로컬은 Postgres만
 
 - **상태:** 승인
-- **보류된 부분:** 배포용 Django 이미지는 보류합니다(ADR-014). 현재는 compose의 Postgres·MongoDB와 CI 서비스 컨테이너만 씁니다.
+- **로컬 전용 확정(ADR-014):** compose의 Postgres·MongoDB와 CI 서비스 컨테이너만 씁니다. Dockerfile은 없습니다.
 
 ### 결정
 
 - 로컬에서는 `docker-compose.yml`로 데이터 저장소(Postgres, MongoDB)만 띄웁니다.
 - Django(`runserver`)와 Vite(`vite dev`)는 호스트(WSL2)에서 직접 실행합니다.
-- Dockerfile은 배포용 Django 이미지 하나만 만듭니다.
 
 | 위치 | 컨테이너 | 비고 |
 | --- | --- | --- |
 | 로컬 | Postgres, MongoDB | Django·Vite·릴레이는 호스트 실행, S3는 실제 dev 버킷 |
 | CI | Postgres·MongoDB 서비스 컨테이너 | SQLite·mongomock 대신 실제 DB로 테스트 |
-| 배포 | Django 이미지(gunicorn) | API 서비스, 마이그레이션 태스크, 일일 배치 RunTask, 이벤트 릴레이 서비스가 같은 이미지를 공유 |
-| 프론트 배포 | 없음 | 정적 빌드를 S3 + CloudFront로 서비스 |
 
 ### 이유
 
 - 핫 리로드와 디버거 연결이 단순하고, 개발 루프가 가볍습니다.
-- MVP 규모에서는 로컬과 배포 환경의 차이로 생기는 위험이 크지 않습니다.
 
 ### 고려한 대안
 
-Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로컬을 실행하는 방법입니다.
+Django까지 compose로 띄워서 Dockerfile로 로컬을 실행하는 방법입니다.
 
 - **장점:** 환경 차이를 일찍 잡을 수 있습니다.
 - **단점:** 개발 루프가 무거워집니다.
 
-단점이 커서 기각했습니다. 배포 이미지는 Phase 2에서 CI가 빌드하면서 검증합니다.
+단점이 커서 기각했습니다.
 
 ---
 
@@ -845,7 +834,7 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 - 접근 로그가 Django에 남습니다.
 
 **대가:**
-- 다운로드 트래픽이 Django와 ALB를 지나므로 대역폭 비용과 워커 점유가 생깁니다.
+- 다운로드 트래픽이 Django를 지나므로 대역폭 비용과 워커 점유가 생깁니다.
 - gunicorn sync worker는 전송 동안 묶입니다. 2.5MB 상한에서는 수용 가능하지만, 동시 다운로드가 많아지면 워커 수를 조정해야 합니다.
 
 **검증 (0-3, 2026-10-12):** 인증 없는 GET은 403입니다. 계약 테스트: [`backend/tests/s3_contract/test_s3_presigned_post.py`](./backend/tests/s3_contract/test_s3_presigned_post.py) `test_s3_object_is_not_publicly_readable`.
@@ -855,7 +844,7 @@ Django까지 compose로 띄워서, 배포 이미지와 같은 Dockerfile로 로�
 ## ADR-013 활동 로그: MongoDB + 트랜잭셔널 아웃박스
 
 - **상태:** 승인
-- **보류된 부분:** MongoDB Atlas, ECS 릴레이 서비스, 배포용 `TRUSTED_PROXY_HOPS` 값은 보류합니다(ADR-014). 로컬에서는 docker MongoDB, `relay_events --loop` 터미널 실행, `TRUSTED_PROXY_HOPS=0`을 씁니다.
+- **로컬 전용 확정(ADR-014):** docker MongoDB, `relay_events --loop` 터미널 실행, `TRUSTED_PROXY_HOPS=0`을 씁니다.
 
 ### 결정
 
@@ -952,7 +941,7 @@ class EventOutbox(models.Model):
 
 TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로, 만료 시각보다 늦게 지워질 수 있습니다.
 
-인덱스는 `manage.py ensure_mongo_indexes`로 생성합니다. 이 커맨드는 멱등이며, 배포할 때마다 실행합니다.
+인덱스는 `manage.py ensure_mongo_indexes`로 생성합니다. 이 커맨드는 멱등이라 여러 번 실행해도 됩니다.
 
 - **정의 충돌:** 같은 이름에 옵션만 다른 인덱스(예: TTL 일수 변경)가 이미 있으면, MongoDB가 `OperationFailure` code 85를 내고 명령이 실패합니다(2026-10-16 실측). 자동으로 고치지 않습니다. 실제로 바꿀 때는 `collMod`를 수동으로 실행합니다.
 - **연결 (`attachments/events/mongo.py`):**
@@ -997,21 +986,19 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 - **트랜잭션 규칙 2번의 명시적 예외:** 릴레이는 행 잠금을 쥔 트랜잭션 안에서 Mongo를 호출합니다. 규칙 2번은 "외부 호출은 `atomic()` 밖"입니다.
   - 이유: 잠금 없이 보내면 두 릴레이가 같은 행을 두 번 전송할 수 있습니다. unique 인덱스(11000)가 흡수하긴 하지만 불필요한 중복 전송입니다.
   - 잠금 보유 상한: `timeoutMS=5000`에 따라 5초입니다(2026-10-16 결정).
-- **배포:** ECS 서비스로 태스크 1개를 상시 실행합니다(같은 Django 이미지).
 - **정리:** 발행된 지 7일 지난 아웃박스 행은 `attachment_maintenance`가 삭제합니다. 미발행 행은 절대 지우지 않습니다.
 
 ### 클라이언트 IP 추출
 
-배포 경로가 CloudFront → ALB → ECS라서, `REMOTE_ADDR`은 ALB 주소입니다. `X-Forwarded-For`의 맨 왼쪽 값은 클라이언트가 임의로 넣을 수 있어 신뢰하지 않습니다.
+프록시 뒤에 두면 `REMOTE_ADDR`은 마지막 프록시 주소가 됩니다. `X-Forwarded-For`의 맨 왼쪽 값은 클라이언트가 임의로 넣을 수 있어 신뢰하지 않습니다.
 
-- **설정:** `TRUSTED_PROXY_HOPS`를 둡니다. 로컬은 0, 배포는 CloudFront와 ALB의 2입니다.
+- **설정:** `TRUSTED_PROXY_HOPS`를 둡니다. 로컬 전용이라 0으로 확정합니다(ADR-014). 0이 아닌 경로는 규칙과 테스트로 유지합니다.
 - **추출 규칙:**
   - `TRUSTED_PROXY_HOPS=0`이면 `REMOTE_ADDR`을 씁니다.
-  - 그 외에는 `X-Forwarded-For`를 `,`로 나눠 항목마다 양쪽 공백을 지우고, **오른쪽에서 `TRUSTED_PROXY_HOPS`번째 값**을 클라이언트 IP로 씁니다. 프록시는 각자 자기에게 접속한 주소를 오른쪽에 덧붙이므로, hops=2면 `"9.9.9.9, 203.0.113.7, 70.1.1.1"`(위조값, 실제 클라이언트, CloudFront 엣지)에서 `203.0.113.7`입니다. (2026-10-15 결정: 이전 문구 "덧붙인 값만 인정하고 그 바로 앞 값"은 오른쪽에서 hops+1번째, 즉 위조 가능한 값으로 읽힐 수 있어 수정)
-  - 항목 수가 hops보다 적거나 헤더가 없으면 `null`입니다. 신뢰 경로를 거치지 않은 요청이고, `REMOTE_ADDR`(ALB 주소)을 클라이언트로 기록하면 감사 로그가 틀려지기 때문입니다.
+  - 그 외에는 `X-Forwarded-For`를 `,`로 나눠 항목마다 양쪽 공백을 지우고, **오른쪽에서 `TRUSTED_PROXY_HOPS`번째 값**을 클라이언트 IP로 씁니다. 프록시는 각자 자기에게 접속한 주소를 오른쪽에 덧붙이므로, hops=2면 `"9.9.9.9, 203.0.113.7, 70.1.1.1"`(위조값, 실제 클라이언트, 첫 프록시)에서 `203.0.113.7`입니다. (2026-10-15 결정: 이전 문구 "덧붙인 값만 인정하고 그 바로 앞 값"은 오른쪽에서 hops+1번째, 즉 위조 가능한 값으로 읽힐 수 있어 수정)
+  - 항목 수가 hops보다 적거나 헤더가 없으면 `null`입니다. 신뢰 경로를 거치지 않은 요청이고, `REMOTE_ADDR`(프록시 주소)을 클라이언트로 기록하면 감사 로그가 틀려지기 때문입니다.
 - **검증:** `ipaddress`로 파싱할 수 없는 값(포트가 붙은 `1.2.3.4:80` 포함)이면 `null`로 저장합니다. 요청은 거부하지 않습니다. IPv6는 압축형으로 정규화합니다(`2001:db8:0:0::1` → `2001:db8::1`).
 - **구현:** `attachments/client_ip.py`의 순수 함수 `client_ip(meta, *, trusted_hops) -> str | None`. view의 `_client(request)`가 `request.META`와 `TRUSTED_PROXY_HOPS`로 이 함수를 호출하고, 결과를 `User-Agent`와 함께 service에 넘깁니다(1-19).
-- **배포 시 확인:** 실제 홉 수는 Phase 3에서 CloudFront를 붙인 뒤 요청 헤더로 확인하고 값을 확정합니다.
 
 ### IP 취급
 
@@ -1045,24 +1032,19 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 - 아웃박스 테이블 하나
 
 **인프라:**
-- 로컬: docker MongoDB
-- 배포: MongoDB Atlas 무료 티어를 기본안으로 합니다.
-- 주의할 점: Atlas는 VPC 밖에 있으므로 ECS 태스크에 외부 egress가 필요합니다.
-  - private subnet이라면 NAT Gateway가 필요한데, 상시 고정비가 발생합니다.
-  - 사이드 프로젝트에서는 public subnet + Atlas IP 접근 목록 조합도 검토 대상입니다.
-- MongoDB 접속 URI는 SSM Parameter Store 또는 Secrets Manager에 둡니다.
+- docker MongoDB(로컬 전용, ADR-014)
 
 **AWS DocumentDB를 쓰지 않는 이유:** MongoDB 호환이지만 MongoDB 그 자체는 아닙니다. 일부 연산자와 aggregation 동작이 다르고, 최소 비용도 큽니다.
 
 ---
 
-## ADR-014 비용 전략: 로컬 개발 전용
+## ADR-014 로컬 전용 학습 MVP, 배포·운영 없음
 
 - **상태:** 승인
 
 ### 결정
 
-- MVP는 로컬 개발 전용으로 진행합니다.
+- 이 프로젝트는 로컬 전용 학습 MVP입니다. 배포·운영은 하지 않습니다(2026-10-19 확정).
 - AWS에는 **시간당 과금이 없고 사용량이 거의 0인 리소스만** 둡니다.
 - 시간당 과금 리소스는 만들지 않습니다: ALB, NAT Gateway, RDS, ECS/Fargate, CloudFront 배포, EventBridge Scheduler.
 
@@ -1079,7 +1061,6 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 | --- | --- | --- |
 | S3 버킷 1개 | 이미지 저장, 계약 테스트 | 테스트 수준이면 월 몇 센트 |
 | IAM 사용자(로컬 개발용) | 버킷 prefix 한정 `PutObject`·`GetObject`·`DeleteObject`·`ListBucket` | 무료 |
-| IAM OIDC 역할(CI용) | nightly `-m s3` 계약 테스트 | 무료 |
 | AWS Budgets | 실제 사용액 $1·$3, 예측 사용액 $3에 알림 | 무료 범위 |
 
 ### 로컬 대체
@@ -1110,18 +1091,14 @@ TTL 삭제는 MongoDB 백그라운드 작업이 주기적으로 수행하므로,
 
 ### 결과
 
-다음 결정들은 "보류" 상태가 됩니다.
-- ADR-007의 CloudFront 구성
-- ADR-008의 스케줄러
-- ADR-009의 Phase 2·3
-- ADR-011의 배포 이미지
-- ADR-013의 Atlas와 배포 IP 홉 수
+다음 결정들은 로컬 전용으로 확정합니다.
+- ADR-007: Vite proxy로 same-origin
+- ADR-008: `attachment_maintenance` 수동 실행
+- ADR-009: Terraform은 S3·IAM·Budgets만
+- ADR-011: Dockerfile 없음
+- ADR-013: docker MongoDB, `TRUSTED_PROXY_HOPS=0`
 
-배포를 하게 되면 다음 기준으로 다시 검토합니다.
-- **임시 스택:** 테스트할 때만 `apply`하고 끝나면 `destroy`합니다.
-- **NAT Gateway 없음:** public subnet과 보안 그룹으로 구성합니다.
-- **ARM64 Fargate**를 씁니다.
-- **예산 기준:** 월 $5 기준 약 45시간입니다.
+**AWS 리소스 삭제:** 날짜 추후 기입. 다시 실행하려면 `terraform apply` 후 dev 사용자 액세스 키를 발급해 `~/.aws` 프로파일에 둡니다.
 
 ---
 
@@ -1174,20 +1151,12 @@ Django의 기본 MVT 구조는 비즈니스 로직의 위치를 정하지 않습
 
 - [x] 크기 상한의 정확한 값: **2,621,440바이트(2.5MiB)**로 확정(2026-10-12). 2,621,440바이트 이하만 허용합니다. 프론트와 S3 조건에 같은 값을 씁니다.
 - [x] presign 한도: 요청당 최대 10개, 사용자별 60회/시간으로 확정(2026-10-13). ADR-001·006 반영.
+- [x] 화면의 시간 표시: 브라우저 현지 시각, `YYYY-MM-DD HH:mm`로 확정(2026-10-17). 포맷 함수가 `timeZone`을 주입받아 테스트는 `'UTC'`를 넘기고, 화면은 브라우저 기본값을 씁니다.
+- [x] 통계 API(1-23)의 Mongo 상한: 해당 없음. 통계 API를 기각했습니다(2026-10-16).
+
+### 후속 학습 후보
+
 - [ ] S3 403 원인 구분: 응답 XML의 `<Message>`로 만료(`Policy expired`)와 정책 위반(`Policy Condition failed`)을 나눠 후자를 첫 403에서 fatal로 보낼지. MVP는 횟수 상한만 둡니다. 근거 본문은 0-3 `test_s3_rejects_expired_post`, `test_s3_rejects_mismatched_content_type`가 단언합니다.
 - [ ] 파일별 업로드 취소: MVP는 전체 취소 하나입니다(ADR-001).
 - [ ] 업로드 동적 풀: 지금은 `add()`·`retry()`를 직렬 실행합니다(ADR-001). 대량 업로드에서 묶음 사이 대기가 문제되면 worker가 큐에서 꺼내는 풀로 바꿉니다. 지금은 응답 없는 파일이 타임아웃(S3 30초)까지 체인을 막습니다(ADR-001 타임아웃).
-- [ ] 감사 로그(`AttachmentPurgeLog`) 보존 기간. 기본값은 무기한입니다.
-- [x] 화면의 시간 표시: 브라우저 현지 시각, `YYYY-MM-DD HH:mm`로 확정(2026-10-17). 포맷 함수가 `timeZone`을 주입받아 테스트는 `'UTC'`를 넘기고, 화면은 브라우저 기본값을 씁니다.
-- [ ] 로그인 성공·실패도 보안 이벤트로 기록할지
-- [x] 통계 API(1-23)의 Mongo 상한: 해당 없음. 통계 API를 기각했습니다(2026-10-16).
 - [ ] 릴레이 backoff에 jitter를 넣을지. 지금은 1초부터 2배씩 늘려 최대 30초이고 jitter는 없습니다. 릴레이를 여러 개 띄울 때 다시 검토합니다.
-
-### 배포 시 재검토 (ADR-014로 보류)
-
-- [ ] 배포 MongoDB 호스팅: Atlas 무료 티어(기본안)와 egress 방식
-- [ ] `TRUSTED_PROXY_HOPS` 배포 값: 실제 헤더로 확정
-- [ ] `event_outbox` 정리를 배치로 나눌지: 지금은 DELETE 한 번입니다. 발행 행이 크게 쌓이면 1,000건 단위로 나눠 잠금과 WAL 부담을 줄이는 방안을 검토합니다.
-- [ ] Atlas(replica set, 기본 `w=majority`)로 전환할 때 write concern 오류 경로를 실측합니다. write concern 오류만 있는 `BulkWriteError`를 릴레이가 실패로 처리하는지 확인합니다(`_is_all_duplicates`의 빈 `writeErrors` 판정).
-- [ ] 관측 도구: Datadog 또는 CloudWatch
-- [ ] 로그인 시도 제한: 배포 재개 시 필수. DRF `AnonRateThrottle`은 IP 기준이라 여러 IP에서 한 계정을 노리는 credential stuffing을 막지 못하므로, IP 기준과 username 기준(커스텀 throttle)을 병행합니다.

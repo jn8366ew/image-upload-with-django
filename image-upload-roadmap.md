@@ -2,7 +2,12 @@
 
 - 작성일: 2026-10-11
 - 설계 근거: [`image-upload-adr.md`](./image-upload-adr.md)
-- 범위: 로컬 개발 전용(ADR-014). AWS는 S3·IAM·Budgets만 씁니다. Phase 2·3은 보류입니다.
+- 범위: 로컬 전용 학습 MVP, 배포·운영 없음(ADR-014). AWS는 S3·IAM·Budgets만 씁니다.
+
+**MVP 완료 (2026-10-19).** 모든 Phase 게이트를 통과했습니다. 배운 것:
+1. 파일은 presigned POST로 브라우저에서 S3에 직접 올리고, `/complete`에서 magic bytes로 동기 검증해 서버를 바이트 경로에서 뺐습니다.
+2. 이벤트는 같은 트랜잭션에서 outbox에 기록하고 릴레이로 옮겨, MongoDB가 멈춰도 요청이 성공하게 했습니다.
+3. 외부 동작(S3 정책 강제, MSW의 XHR 한계, pymongo timeout)은 추정으로 두지 않고 실측한 뒤 계약 테스트로 고정했습니다.
 
 ---
 
@@ -37,7 +42,6 @@ flowchart LR
     P1B -->|"게이트: API 테스트 전부 green"| P1E["Phase 1-E<br/>활동 로그 · 아웃박스"]
     P1E -->|"게이트: 릴레이 멱등 · Mongo 장애 격리"| P1F["Phase 1-F<br/>프론트"]
     P1F -->|"게이트: 로컬 E2E 수동 시나리오"| DONE["MVP 완료<br/>로컬 전용"]
-    DONE -.->|"보류: 배포 결정 시"| P23["Phase 2·3<br/>AWS 배포"]
 ```
 
 | Phase | 목표 | 완료 게이트 |
@@ -46,8 +50,6 @@ flowchart LR
 | 1-B | 업로드·검증·다운로드·삭제·배치 API | 백엔드 테스트 전부 green, diff-cover 100% |
 | 1-E | 이벤트 아웃박스, 릴레이, MongoDB 인덱스, IP 추출 | MongoDB를 멈춘 상태에서 1-B 테스트 전부 green, 릴레이 재개 후 누락 없음 |
 | 1-F | 업로드 화면, 내 목록, 다운로드, 삭제 | Vitest 전부 green + 실제 dev 버킷 수동 시나리오 |
-| 2 (보류) | ECS·RDS·ALB 배포 | ALB 경유 API 동작, `terraform destroy` → `apply` 재현 |
-| 3 (보류) | CloudFront, 스케줄러, 권한 정리, 관측 | 배포 도메인에서 Phase 1 시나리오 통과, 배치 실행 이력 확인 |
 
 ---
 
@@ -101,7 +103,6 @@ state는 로컬 파일로 두고 gitignore합니다.
 - [x] dev IAM 사용자 액세스 키를 콘솔에서 발급해 `~/.aws`의 `image-upload-dev` 프로파일에 등록, `.env`에 `AWS_PROFILE`·`S3_BUCKET` 반영
 
 AWS 액세스 키는 `~/.aws` 프로파일에만 두고, 리포와 `.env`에 커밋하지 않습니다. Terraform으로 액세스 키를 만들지 않습니다(tfstate에 평문으로 남음).
-CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹니다.
 
 ### 0-3. S3 spike → 계약 테스트
 
@@ -140,6 +141,7 @@ CI용 OIDC 역할은 nightly `-m s3` 계약 테스트와 함께 0-3에서 다룹
 - [x] `test_delete_missing_key_succeeds`
 - [x] `test_delete_failure_raises_storage_error`: S3 오류는 `StorageError`로 매핑 (배치는 key마다 `delete_object`, ADR-005)
 - [x] `test_fake_gateway_matches_adapter_contract`: 같은 테스트 세트를 fake와 어댑터 양쪽에 실행
+- [x] `test_read_prefix_missing_key_raises_object_not_found`: fake·moto 계약 (2026-10-19 추가)
 - [x] Refactor 체크포인트
 
 ### 1-3. 인증 API
@@ -536,7 +538,7 @@ API 래퍼 `src/api/attachments.ts`는 실행기 계약(오류는 `UploadError`,
 
 ---
 
-## 로컬 실행 절차 (MVP 운영 방식)
+## 로컬 실행 절차
 
 ```bash
 docker compose up -d                                  # Postgres, MongoDB
@@ -553,58 +555,3 @@ uv run python manage.py attachment_maintenance        # 필요할 때 수동 실
 - **AWS 자격 증명:** `AWS_PROFILE`로 로컬 개발용 IAM 프로파일을 지정합니다.
 - **배치 시간 규칙(24h, 30일, 1년)은 테스트에서 time-machine으로 검증합니다.** 로컬에서 실제로 며칠씩 기다릴 필요는 없습니다.
 
----
-
-## Phase 2 — AWS 배포 (보류, ADR-014)
-
-> 배포를 결정하면 이 단계를 시작합니다. 그때는 임시 스택(apply/destroy), NAT Gateway 없음, ARM64 Fargate를 기준으로 다시 검토합니다. 예산 기준은 월 $5, 약 45시간입니다.
-
-인프라 작업이므로 비즈니스 로직 TDD 대상이 아닙니다. 보안 설정만 `terraform test`로 단언합니다.
-
-**Terraform 구성:**
-- VPC
-- RDS PostgreSQL
-- ECR
-- ECS Fargate 서비스
-- ALB
-- ECS 태스크 롤
-
-**단언할 보안 설정:**
-- [ ] 태스크 롤 권한이 버킷 prefix로 한정된다
-- [ ] RDS가 public 접근 불가
-- [ ] 보안 그룹: ALB → ECS → RDS만 허용
-
-**그 밖의 작업:**
-- **비밀값:** DB 비밀번호, `SECRET_KEY`, MongoDB 접속 URI는 SSM Parameter Store 또는 Secrets Manager에 둡니다.
-- **이미지:** Django 이미지(gunicorn) 하나를 만들고, 마이그레이션과 `ensure_mongo_indexes`는 같은 이미지의 일회성 ECS 태스크로 실행합니다.
-- **MongoDB:**
-  - MongoDB Atlas 클러스터를 생성합니다(기본안: 무료 티어).
-  - ECS egress 방식을 정합니다. NAT Gateway 또는 public subnet + Atlas IP 접근 목록 중 하나입니다.
-- **이벤트 릴레이:** 같은 이미지로 ECS 서비스를 만들고(태스크 1개), 커맨드는 `manage.py relay_events --loop`입니다.
-- **CI/CD:** GitHub Actions로 테스트 → 이미지 빌드·푸시 → 서비스 갱신 순서로 배포합니다. AWS 인증은 OIDC로 합니다.
-
-**Phase 2 게이트:**
-- ALB 경유로 Phase 1 API가 동작합니다.
-- `terraform destroy` → `apply`로 재현됩니다.
-- `pytest -m s3`가 배포 리전에서 통과합니다.
-
----
-
-## Phase 3 — 마무리 (보류, ADR-014)
-
-- **CloudFront:** SPA(S3) origin과 `/api/*`(ALB) origin을 둡니다. `CSRF_TRUSTED_ORIGINS`와 버킷 CORS를 배포 도메인으로 갱신합니다.
-- **EventBridge Scheduler:** ECS RunTask로 `attachment_maintenance`를 하루 1회 실행합니다.
-- **break-glass 역할:** 역할을 추가하고, 개발자 기본 권한에서 운영 버킷 `DeleteObject`를 제거합니다.
-- **`TRUSTED_PROXY_HOPS` 확정:** CloudFront → ALB 경유 요청의 `X-Forwarded-For`를 실제로 확인해 값을 정합니다.
-  - 그 구성을 재현하는 `test_client_ip_behind_cloudfront_and_alb`를 추가합니다(Red → Green).
-- **관측 알람:**
-  - 업로드 실패율
-  - `PENDING` 잔량
-  - `DELETING` 정체 건수
-  - 다운로드 5xx
-  - 아웃박스 미발행 건수와 가장 오래된 미발행 이벤트의 대기 시간(릴레이 정지 감지)
-- **(선택) Playwright E2E:** 업로드 → 다운로드 해피 패스
-
-**Phase 3 게이트:**
-- 배포 도메인에서 Phase 1 시나리오가 통과합니다.
-- 배치 실행 이력이 CloudWatch Logs에 남습니다.

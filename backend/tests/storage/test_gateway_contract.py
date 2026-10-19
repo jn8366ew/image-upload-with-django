@@ -50,6 +50,11 @@ def test_read_prefix_requests_range_0_7(store):
         assert store.sent_ranges == ["bytes=0-7"]
 
 
+def test_read_prefix_missing_key_raises_object_not_found(store):
+    with pytest.raises(ObjectNotFound):
+        store.gateway.read_prefix("attachments/1/missing.png")
+
+
 def test_open_returns_stream_and_content_type(store):
     store.put(KEY, b"jpeg-bytes", "image/jpeg")
 
