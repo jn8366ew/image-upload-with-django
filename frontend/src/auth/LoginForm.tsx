@@ -13,7 +13,7 @@ export function LoginForm({ onLoggedIn }: { onLoggedIn: (user: SessionUser) => v
   }
 
   return (
-    <form onSubmit={submit}>
+    <form className="card login" onSubmit={submit}>
       <label>
         아이디
         <input value={username} onChange={(e) => setUsername(e.target.value)} />
@@ -22,10 +22,14 @@ export function LoginForm({ onLoggedIn }: { onLoggedIn: (user: SessionUser) => v
         비밀번호
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
-      <button type="submit" disabled={isPending}>
+      <button type="submit" className="primary" disabled={isPending}>
         로그인
       </button>
-      {errorMessage && <p role="alert">{errorMessage}</p>}
+      {errorMessage && (
+        <p className="alert" role="alert">
+          {errorMessage}
+        </p>
+      )}
     </form>
   )
 }

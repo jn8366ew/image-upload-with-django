@@ -19,6 +19,17 @@ const REJECT_MESSAGE: Record<RejectReason, string> = {
   invalid_name: '파일명이 너무 길거나 허용되지 않는 문자가 있습니다',
 }
 
+const STATUS_TONE: Record<Entry['status'], string> = {
+  queued: 'muted',
+  presigning: 'active',
+  uploading: 'active',
+  confirming: 'active',
+  backoff: 'active',
+  done: 'ok',
+  failed: 'err',
+  cancelled: 'muted',
+}
+
 function labelOf(e: Entry) {
   return e.status === 'failed' && e.retryable ? '실패(다시 시도 가능)' : STATUS_LABEL[e.status]
 }
@@ -28,27 +39,29 @@ export function UploadPanel({ onCompleted }: { onCompleted?: () => void }) {
 
   return (
     <div>
-      <label>
-        이미지 선택
-        <input
-          type="file"
-          multiple
-          accept="image/png,image/jpeg"
-          onChange={(event) => {
-            select([...(event.target.files ?? [])])
-            event.target.value = ''
-          }}
-        />
-      </label>
-      <button type="button" onClick={retry} disabled={!canRetry}>
-        실패한 파일 다시 시도
-      </button>
-      <button type="button" onClick={cancelAll} disabled={!canCancel}>
-        전체 취소
-      </button>
-      <p>취소는 전송만 멈춥니다. 이미 전송된 파일은 목록에 나타날 수 있습니다.</p>
+      <div className="toolbar">
+        <label className="file-button">
+          이미지 선택
+          <input
+            type="file"
+            multiple
+            accept="image/png,image/jpeg"
+            onChange={(event) => {
+              select([...(event.target.files ?? [])])
+              event.target.value = ''
+            }}
+          />
+        </label>
+        <button type="button" onClick={retry} disabled={!canRetry}>
+          실패한 파일 다시 시도
+        </button>
+        <button type="button" onClick={cancelAll} disabled={!canCancel}>
+          전체 취소
+        </button>
+      </div>
+      <p className="hint">취소는 전송만 멈춥니다. 이미 전송된 파일은 목록에 나타날 수 있습니다.</p>
       {rejected.length > 0 && (
-        <ul aria-label="올릴 수 없는 파일">
+        <ul className="rejected" aria-label="올릴 수 없는 파일">
           {rejected.map((r, i) => (
             <li key={`${r.name}-${i}`}>
               <span>{r.name}</span>
@@ -57,12 +70,12 @@ export function UploadPanel({ onCompleted }: { onCompleted?: () => void }) {
           ))}
         </ul>
       )}
-      <ul aria-label="업로드 목록">
+      <ul className="rows" aria-label="업로드 목록">
         {entries.map((e) => (
-          <li key={e.clientRef}>
-            <span>{e.file.name}</span>
+          <li key={e.clientRef} className="upload-row">
+            <span className="name">{e.file.name}</span>
             <progress max={e.file.size} value={e.loaded} />
-            <span>{labelOf(e)}</span>
+            <span className={`status ${STATUS_TONE[e.status]}`}>{labelOf(e)}</span>
           </li>
         ))}
       </ul>

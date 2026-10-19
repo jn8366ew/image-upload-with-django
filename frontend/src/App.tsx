@@ -12,18 +12,28 @@ function App() {
 
   return (
     <main>
-      <h1>Image Upload</h1>
+      <header className="header">
+        <h1>Image Upload</h1>
+        {user && (
+          <>
+            <p>{user.username}</p>
+            <button type="button" onClick={logout} disabled={isLoggingOut}>
+              로그아웃
+            </button>
+          </>
+        )}
+      </header>
       {isPending ? null : user ? (
-        <section>
-          <h2>업로드</h2>
-          <p>{user.username}</p>
-          <button type="button" onClick={logout} disabled={isLoggingOut}>
-            로그아웃
-          </button>
-          <UploadPanel onCompleted={refreshAttachments} />
-          <h2>내 이미지</h2>
-          <AttachmentList />
-        </section>
+        <>
+          <section className="card">
+            <h2>업로드</h2>
+            <UploadPanel onCompleted={refreshAttachments} />
+          </section>
+          <section className="card">
+            <h2>내 이미지</h2>
+            <AttachmentList />
+          </section>
+        </>
       ) : (
         <LoginForm onLoggedIn={setUser} />
       )}

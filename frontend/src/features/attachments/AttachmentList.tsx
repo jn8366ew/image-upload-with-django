@@ -8,11 +8,15 @@ export function AttachmentList({ timeZone }: { timeZone?: string }) {
 
   return (
     <section>
-      {errorMessage && <p role="alert">{errorMessage}</p>}
-      <ul aria-label="내 이미지">
+      {errorMessage && (
+        <p className="alert" role="alert">
+          {errorMessage}
+        </p>
+      )}
+      <ul className="rows" aria-label="내 이미지">
         {items.map((item) => (
-          <li key={item.publicId}>
-            <span>{item.filename}</span>
+          <li key={item.publicId} className="list-row">
+            <span className="name">{item.filename}</span>
             <time dateTime={item.uploadedAt}>{formatUploadedAt(item.uploadedAt, timeZone)}</time>
             <a
               href={`/api/attachments/${item.publicId}/download`}
@@ -35,7 +39,7 @@ export function AttachmentList({ timeZone }: { timeZone?: string }) {
         ))}
       </ul>
       {hasMore && (
-        <button type="button" onClick={loadMore}>
+        <button type="button" className="more" onClick={loadMore}>
           더 보기
         </button>
       )}
