@@ -5,8 +5,6 @@
 - 브라우저 → S3 직접 업로드(presigned POST)
 - Django 경유 다운로드, S3 key·URL 비노출
 
-
-
 ## 업로드 흐름
 
 이미지 바이트는 Django 미경유. Django는 ① 서명과 ③ 검증만 담당.
@@ -24,9 +22,9 @@ sequenceDiagram
     D-->>B: COMPLETED / 400 형식 불일치 / 409 객체 없음
 ```
 
+
+
 ![업로드 화면: 동시 3개 업로드, 진행률, 완료 후 목록 반영](./docs/recording.gif)
-
-
 
 - Django 경유 다운로드 → S3 key·URL 클라이언트 비노출
 - S3 이벤트·Celery 없는 `/complete` 동기 검증 → 상시 프로세스 없음
@@ -55,7 +53,7 @@ sequenceDiagram
 ## 목적
 
 - 과거에 미비했던 아키텍처 재구성
-- 서버 부하 없는 대용량 업로드 + 서버가 통제하는 파일 접근 구조의 직접 설계·구현
+- 서버의 부하를 최소화 하면서 대용량 업로드 + 서버가 통제하는 파일 접근 구조 설계·구현
 - 모든 비즈니스 로직의 TDD(Red → Green → Refactor) 작성 연습
 - React + TypeScript와 MongoDB의 실제 기능 적용
 
